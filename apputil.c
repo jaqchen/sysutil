@@ -170,7 +170,6 @@ int appf_mountpoint(const char * path)
     #define SYS_close_range __NR_close_range
   #else
     #define SYS_close_range -1l
-    #warning Define SYS_close_range to minus one
   #endif
 #endif
 int appf_closefds(int fd, int maxfd, int verb)
@@ -178,8 +177,10 @@ int appf_closefds(int fd, int maxfd, int verb)
 	long sysno;
 	int ret, error;
 
-	errno = 0;
 	sysno = SYS_close_range;
+	if (sysno < 0)
+		goto slow_close;
+	errno = 0;
 	ret = syscall(sysno, fd, maxfd, 0);
 	if (ret < 0) {
 		error = errno;

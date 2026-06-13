@@ -32,6 +32,7 @@
 #include <pthread.h>
 #include <sys/prctl.h>
 #include <sys/file.h>
+#include <sys/inotify.h>
 #include <termios.h>
 
 #include <lua.h>
@@ -42,7 +43,8 @@
 
 #include <glob.h> /* request for glob function */
 
-extern int luaopen_sysutil(lua_State * L);
+static const char place_holder[] = "placeholder";
+extern int luaopen_sysutil(lua_State * L) __attribute__((visibility("default")));
 
 static int sysutil_checkstack(lua_State * lua, int num)
 {
@@ -571,7 +573,7 @@ static int sysutil_tcpcheck(lua_State * L)
 
 	luai = 0;
 	rval = 0;
-	timeo = 2500; /* 2500 milliseconds */
+	timeo = 3500; /* 3500 milliseconds */
 	i_info = a_info = NULL;
 	if (sysutil_checkstack(L, 3) < 0)
 		return 0;
@@ -1100,7 +1102,7 @@ static int sysutil_realpath(lua_State * L)
 		return 2;
 	}
 
-	real = (char *) calloc(0x1, 2048);
+	real = (char *) calloc(0x1, 4096);
 	if (real == NULL) {
 		lua_pushnil(L);
 		lua_pushstring(L, "System out of memory");
@@ -1117,9 +1119,50 @@ static int sysutil_realpath(lua_State * L)
 		return 2;
 	}
 
-	real[2048 - 1] = '\0';
+	real[4096 - 1] = '\0';
 	lua_pushstring(L, real);
 	free(real);
+	return 1;
+}
+
+static int sysutil_rename(lua_State * L)
+{
+	int ret;
+	size_t len0, len1;
+	const char * path0, * path1;
+
+	len0 = len1 = 0;
+	path0 = path1 = NULL;
+	if (sysutil_checkstack(L, 2) < 0)
+		return 0;
+
+	ret = lua_gettop(L);
+	if (ret < 2) {
+		lua_pushnil(L);
+		lua_pushstring(L, "Error, invalid number of args");
+		return 2;
+	}
+
+	if (lua_type(L, 1) == LUA_TSTRING)
+		path0 = lua_tolstring(L, 1, &len0);
+	if (lua_type(L, 2) == LUA_TSTRING)
+		path1 = lua_tolstring(L, 2, &len1);
+	if (len0 == 0 || len1 == 0) {
+		lua_pushnil(L);
+		lua_pushstring(L, "Error, invalid args for rename");
+		return 2;
+	}
+
+	ret = rename(path0, path1);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushfstring(L, "Error, rename(%s, %s) has failed: %s\n",
+			path0, path1, strerror(ret));
+		return 2;
+	}
+
+	lua_pushboolean(L, 1);
 	return 1;
 }
 
@@ -1262,10 +1305,16 @@ static int sysutil_stat(lua_State * L)
 
 	lua_createtable(L, 0, 20);
 
-	lua_pushinteger(L, (lua_Integer) fst.st_dev);
+	if (sizeof(lua_Integer) == 0x8)
+		lua_pushinteger(L, (lua_Integer) fst.st_dev);
+	else
+		lua_pushnumber(L, (lua_Number) fst.st_dev);
 	lua_setfield(L, -2, "st_dev");
 
-	lua_pushinteger(L, (lua_Integer) fst.st_ino);
+	if (sizeof(lua_Integer) == 0x8)
+		lua_pushinteger(L, (lua_Integer) fst.st_ino);
+	else
+		lua_pushnumber(L, (lua_Number) fst.st_ino);
 	lua_setfield(L, -2, "st_ino");
 
 	lua_pushinteger(L, (lua_Integer) fst.st_mode);
@@ -1283,7 +1332,10 @@ static int sysutil_stat(lua_State * L)
 	lua_pushinteger(L, (lua_Integer) fst.st_rdev);
 	lua_setfield(L, -2, "st_rdev");
 
-	lua_pushinteger(L, (lua_Integer) fst.st_size);
+	if (sizeof(lua_Integer) == 0x8)
+		lua_pushinteger(L, (lua_Integer) fst.st_size);
+	else
+		lua_pushnumber(L, (lua_Number) fst.st_size);
 	lua_setfield(L, -2, "st_size");
 
 	lua_pushinteger(L, (lua_Integer) fst.st_blksize);
@@ -1338,20 +1390,25 @@ static int sysutil_glob(lua_State * L)
 		return 0;
 
 	ntop = lua_gettop(L);
-	if (ntop >= 1 && sysutil_isinteger(L, 1, &luai))
-		flags = (int) luai;
-	if (ntop >= 2 && lua_type(L, 2) == LUA_TSTRING)
-		pattern = lua_tolstring(L, 2, NULL);
+	if (ntop >= 1 && lua_type(L, 1) == LUA_TSTRING)
+		pattern = lua_tolstring(L, 1, NULL);
 	if (pattern == NULL || pattern[0] == '\0') {
 		lua_pushnil(L);
 		lua_pushstring(L, "Error, invalid pattern for glob");
 		return 2;
 	}
+	if (ntop >= 2 && sysutil_isinteger(L, 2, &luai))
+		flags = (int) luai;
 
 	memset(&gt, 0, sizeof(gt));
 	ret = glob(pattern, flags, NULL, &gt);
-	lua_pushinteger(L, ret);
-	if (gt.gl_pathc > 0 && gt.gl_pathv != NULL) {
+	if (ret != 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	do {
 		size_t idx;
 		int jdx = 0;
 
@@ -1366,16 +1423,186 @@ static int sysutil_glob(lua_State * L)
 			}
 		}
 
-		globfree(&gt);
 		if (jdx == 0) {
+			globfree(&gt);
 			lua_settop(L, ntop);
-			return 1;
+			lua_pushnil(L);
+			lua_pushinteger(L, EINVAL);
+			return 2;
 		}
-		return 2;
-	}
+	} while (0);
 
 	globfree(&gt);
 	return 1;
+}
+
+static int sysutil_inotify_read(lua_State * L,
+	int ifd, const int * pfds, int pfdnum)
+{
+	char * pbuf;
+	int retval, ntop;
+	ssize_t plen, len;
+	const struct inotify_event * iev;
+	const ssize_t evtlen = (ssize_t) sizeof(struct inotify_event);
+
+	retval = 0;
+	pbuf = (char *) malloc(32768);
+	if (pbuf == NULL)
+		return -1;
+
+	errno = 0;
+	plen = read(ifd, pbuf, 32768);
+	if (plen < evtlen) {
+		int ret = errno;
+		if (ret == 0)
+			ret = ERANGE;
+		fprintf(stderr, "Error, failed to read inotify: %s\n", strerror(ret));
+		fflush(stderr);
+		free(pbuf);
+		errno = ret;
+		return -1;
+	}
+
+	len = 0;
+	ntop = lua_gettop(L);
+	lua_createtable(L, 0, (ntop > 1) ? ntop - 1 : 1);
+	iev = (const struct inotify_event *) pbuf;
+	if (lua_type(L, ntop + 1) != LUA_TTABLE) {
+		fputs("Error, failed to create Lua table.\n", stderr);
+		fflush(stderr);
+		free(pbuf);
+		errno = EINVAL;
+		return -1;
+	}
+
+	while ((len + evtlen) <= plen) {
+		size_t totlen;
+		if (iev->len > 0 && iev->name[0]) {
+			retval++;
+			lua_pushinteger(L, (lua_Integer) iev->mask);
+			lua_setfield(L, ntop + 1, iev->name);
+		} else {
+			int i, j = -1;
+			const char * filp;
+			for (i = 1; i < pfdnum; ++i) {
+				if (pfds[i] == iev->wd) {
+					j = i;
+					break;
+				}
+			}
+
+			filp = (j > 0 && j <= ntop) ? lua_tolstring(L, j, NULL) : NULL;
+			if (filp && filp[0]) {
+				retval++;
+				lua_pushinteger(L, (lua_Integer) iev->mask);
+				lua_setfield(L, ntop + 1, filp);
+			}
+		}
+
+		totlen = sizeof(*iev) + iev->len;
+		len += (ssize_t) totlen;
+		iev = (const struct inotify_event *) (((unsigned char *) iev) + totlen);
+	}
+
+	free(pbuf);
+	return retval;
+}
+
+static int sysutil_inotify(lua_State * L)
+{
+	lua_Integer luai;
+	unsigned int imask;
+	int tmpval, ret, ifd, ntop;
+	int i, timeout, * pfds;
+	struct pollfd ipoll;
+
+	ifd = -1;
+	luai = 0;
+	pfds = NULL;
+
+	ntop = lua_gettop(L);
+	ret = (ntop >= 1) ? sysutil_isinteger(L, 1, &luai) : 0;
+	if (ret != 0)
+		imask = (unsigned int) luai;
+	else
+		imask = IN_MODIFY | IN_MOVE | IN_DELETE_SELF;
+
+	ret = (ntop >= 2) ? sysutil_isinteger(L, 2, &luai) : 0;
+	if (ret == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+	timeout = (int) luai;
+
+	tmpval = (ntop >= 3) ? lua_type(L, 3) : -1;
+	if (tmpval != LUA_TSTRING) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	ifd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+	if (ifd < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	pfds = (int *) malloc(512 * sizeof(int));
+	if (pfds == NULL)
+		goto err0;
+	memset(pfds, 0xff, 512 * sizeof(int));
+
+	for (i = 3; i < 512; ++i) {
+		size_t len;
+		const char * filp;
+		ret = lua_type(L, i);
+		if (ret != LUA_TSTRING)
+			break;
+
+		len = 0;
+		filp = lua_tolstring(L, i, &len);
+		if (filp && len > 0) {
+			ret = inotify_add_watch(ifd, filp, imask);
+			if (ret < 0)
+				goto err0;
+			pfds[i] = ret;
+		}
+	}
+
+	ipoll.fd = ifd;
+	ipoll.events = POLLIN;
+	ipoll.revents = 0;
+	ret = poll(&ipoll, 0x1, timeout);
+	if (ret < 0)
+		goto err0;
+
+	if (ret == 0) {
+		free(pfds);
+		close(ifd);
+		lua_pushnil(L);
+		lua_pushinteger(L, ETIMEDOUT);
+		return 2;
+	}
+
+	if (sysutil_inotify_read(L, ifd, pfds, ntop + 1) <= 0)
+		goto err0;
+	free(pfds);
+	close(ifd);
+	return 1;
+
+err0:
+	ret = errno;
+	if (pfds != NULL)
+		free(pfds);
+	if (ifd != -1)
+		close(ifd);
+	lua_settop(L, ntop);
+	lua_pushnil(L);
+	lua_pushinteger(L, ret);
+	return 2;
 }
 
 static int sysutil_chdir(lua_State * L)
@@ -1625,11 +1852,10 @@ static int sysutil_upmsec(lua_State * L)
 
 	res = (unsigned long long) nowt.tv_sec;
 	res = res * 1000 + (unsigned long long) (nowt.tv_nsec / 1000000);
-#if LUA_VERSION_NUM < 503
-	lua_pushnumber(L, (lua_Number) res);
-#else
-	lua_pushinteger(L, (lua_Integer) res);
-#endif
+	if (sizeof(lua_Integer) == 0x8)
+		lua_pushinteger(L, (lua_Integer) res);
+	else
+		lua_pushnumber(L, (lua_Number) res);
 	return 1;
 }
 
@@ -1785,7 +2011,10 @@ static int sysutil_lseek(lua_State * L)
 		return 2;
 	}
 
-	lua_pushnumber(L, (lua_Number) off1);
+	if (sizeof(lua_Integer) == 0x8)
+		lua_pushinteger(L, (lua_Integer) off1);
+	else
+		lua_pushnumber(L, (lua_Number) off1);
 	return 1;
 }
 
@@ -2230,6 +2459,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "getpid",         sysutil_getpid },
 	{ "getppid",        sysutil_getppid },
 	{ "glob",           sysutil_glob },
+	{ "inotify",        sysutil_inotify },
 	{ "kill",           sysutil_kill },
 	{ "killid",         sysutil_killid },      /* calls pthread_kill(...) */
 	{ "killpg",         sysutil_killpg },
@@ -2244,6 +2474,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "readlink",       sysutil_readlink },
 	{ "readpass",       sysutil_readpass },
 	{ "realpath",       sysutil_realpath },
+	{ "rename",         sysutil_rename },
 	{ "rmdir",          sysutil_rmdir },
 	{ "setenv",         sysutil_setenv },
 	{ "setname",        sysutil_setname },
@@ -2258,6 +2489,57 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "uptime",         sysutil_uptime },
 	{ "waitpid",        sysutil_waitpid },
 	{ "zipstdio",       sysutil_zipstdio },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
+	{ place_holder,     NULL },
 	{ NULL,             NULL },
 };
 
@@ -2313,6 +2595,7 @@ int luaopen_sysutil(lua_State * L)
 	lua_pushinteger(L, SEEK_END);
 	lua_setfield(L, -2, "SEEK_END");
 
+	SYSUTIL_PUSHINT(ETIMEDOUT);
 	/* flags for glob(...) function: */
 	SYSUTIL_PUSHINT(GLOB_ERR);
 	SYSUTIL_PUSHINT(GLOB_MARK);
