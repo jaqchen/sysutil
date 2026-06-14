@@ -1089,6 +1089,8 @@ static int sysutil_multicast(lua_State * L)
 	fd = -1;
 	luai = -1;
 	netidx = 0;
+	if (sysutil_checkstack(L, 2) < 0)
+		return 0;
 	ntop = lua_gettop(L);
 	if (ntop >= 1 && sysutil_isinteger(L, 1, &luai))
 		fd = (int) luai;
@@ -2308,7 +2310,7 @@ static int sysutil_chdir(lua_State * L)
 	return 1;
 }
 
-static int sysutil_getwd(lua_State * L)
+static int sysutil_getcwd(lua_State * L)
 {
 	char * dir, * rdir;
 	if (sysutil_checkstack(L, 2) < 0)
@@ -3808,6 +3810,8 @@ static int sysutil_socket(lua_State * L)
 	lua_Integer value;
 	int domain, type, proto;
 
+	if (sysutil_checkstack(L, 2) < 0)
+		return 0;
 	ret = lua_gettop(L);
 	if (ret < 3) {
 		lua_pushnil(L);
@@ -4048,7 +4052,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "getid",          sysutil_getid },       /* calls pthread_self() */
 	{ "getpid",         sysutil_getpid },
 	{ "getppid",        sysutil_getppid },
-	{ "getwd",          sysutil_getwd },
+	{ "getcwd",         sysutil_getcwd },
 	{ "glob",           sysutil_glob },
 	{ "inotify",        sysutil_inotify },
 	{ "kill",           sysutil_kill },
