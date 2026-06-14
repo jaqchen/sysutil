@@ -43,6 +43,7 @@ unsigned char * appf_readfile(const char * filp,
 #define APPUTIL_OPTION_LOWPRI    0x40
 #define APPUTIL_OPTION_EXEC      0x80
 #define APPUTIL_OPTION_SYMLINK   0x100
+#define APPUTIL_OPTION_RSTRIP    0x200
 #define APPUTIL_PIPE_MASK        0x7FFF0000
 #define APPUTIL_BUFSIZE          8192
 

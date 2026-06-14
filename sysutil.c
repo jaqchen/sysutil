@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <poll.h>
@@ -36,6 +37,7 @@
 #include <sys/inotify.h>
 #include <termios.h>
 #include <libgen.h>
+#include <linux/netlink.h>
 
 #ifdef SYSUTIL_SYSCALL
 #include <sys/syscall.h>
@@ -47,8 +49,12 @@
 #include "apputil.h"
 #include "zsha256_util.h"
 #include "openwrt_base64.h"
+#include <net/if.h>
 
 #include <glob.h> /* request for glob function */
+#ifndef IFNAMSIZ
+  #define IFNAMSIZ 16
+#endif
 
 static const char place_holder[] = "placeholder";
 extern int luaopen_sysutil(lua_State * L) __attribute__((visibility("default")));
@@ -85,6 +91,96 @@ static int sysutil_isinteger(lua_State * L,
 		return 1;
 	}
 	return 0;
+}
+
+static int sysutil_push_addr(lua_State * L, char * addr, socklen_t sock_len, int numret)
+{
+	char str_a[96];
+	lua_Integer port;
+
+	switch (sock_len) {
+	case sizeof(struct sockaddr_in): {
+		struct sockaddr_in * p;
+
+		p = (struct sockaddr_in *) addr;
+		memset(str_a, 0, sizeof(str_a));
+		inet_ntop(AF_INET, &p->sin_addr, str_a, sizeof(str_a) - 1);
+		lua_pushstring(L, str_a);
+		port = (lua_Integer) ntohs(p->sin_port);
+		lua_pushinteger(L, port & 0xffff);
+		return numret + 2;
+	}
+
+	case sizeof(struct sockaddr_in6): {
+		struct sockaddr_in6 * p;
+
+		p = (struct sockaddr_in6 *) addr;
+		memset(str_a, 0, sizeof(str_a));
+		inet_ntop(AF_INET6, &p->sin6_addr, str_a, sizeof(str_a) - 1);
+		lua_pushstring(L, str_a);
+		port = (lua_Integer) ntohs(p->sin6_port);
+		lua_pushinteger(L, port & 0xffff);
+		return numret + 2;
+	}
+
+	case sizeof(struct sockaddr_un): {
+		struct sockaddr_un * p;
+
+		p = (struct sockaddr_un *) addr;
+		if (p->sun_path[0] == '\0')
+			lua_pushstring(L, &p->sun_path[1]);
+		else
+			lua_pushstring(L, p->sun_path);
+		return numret + 1;
+	}
+
+	default:
+		return numret;
+	}
+}
+
+static int sysutil_accept(lua_State * L)
+{
+	socklen_t slt;
+	char addr[128];
+	lua_Integer value;
+	int fd, ret, newfd, Flags;
+
+	fd = -1;
+	newfd = -1;
+	ret = lua_gettop(L);
+	if (ret <= 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	value = 0;
+	Flags = SOCK_CLOEXEC;
+	if (ret >= 2 && sysutil_isinteger(L, 2, &value))
+		Flags = (int) value;
+
+	value = -1;
+	if (sysutil_isinteger(L, 1, &value))
+		fd = (int) value;
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	slt = sizeof(addr);
+	memset(addr, 0, sizeof(addr));
+	newfd = accept4(fd, (struct sockaddr *) addr, &slt, Flags);
+	if (newfd < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, newfd);
+	return sysutil_push_addr(L, addr, slt, 1);
 }
 
 static int sysutil_uptime(lua_State * L)
@@ -308,6 +404,7 @@ static int sysutil_dirname(lua_State * L)
 
 static int sysutil_call(lua_State * L)
 {
+	lua_Integer luai;
 	size_t inlen;
 	apputil_t appu;
 	const char * input;
@@ -325,15 +422,16 @@ static int sysutil_call(lua_State * L)
 		return 2;
 	}
 
+	luai = 0;
 	dtype = lua_type(L, 2);
-	if (sysutil_isinteger(L, 1, NULL) == 0 ||
+	if (sysutil_isinteger(L, 1, &luai) == 0 ||
 		(dtype != LUA_TSTRING && dtype != LUA_TTABLE)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
 	}
 
-	options = (int) lua_tointeger(L, 1);
+	options = (int) luai;
 	appu = apputil_new(NULL, options);
 	if (appu == NULL) {
 		lua_pushnil(L);
@@ -438,6 +536,15 @@ static int sysutil_call(lua_State * L)
 			len = APPUTIL_BUFSIZE;
 		output = apputil_read(appu, len, &outlen);
 		if (output && outlen > 0) {
+			if (options & APPUTIL_OPTION_RSTRIP) {
+				while (outlen > 0) {
+					char c = output[outlen - 1];
+					if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\0')
+						outlen--;
+					else
+						break;
+				}
+			}
 			lua_pushlstring(L, output, (size_t) outlen);
 			ret++;
 		}
@@ -509,6 +616,55 @@ static int system_tcpsock(int * sockp, int ipv6)
 	return 0;
 }
 
+static int tcp_connect_poll(int sockfd, int timeout, int * errp)
+{
+	socklen_t slt;
+	int ret, error;
+	struct pollfd tfd;
+
+again:
+	tfd.fd = sockfd;
+	tfd.events = POLLOUT | POLLERR | POLLPRI;
+	tfd.revents = 0;
+
+	errno = 0;
+	ret = poll(&tfd, 1, timeout);
+	if (ret == 0) {
+		*errp = ETIMEDOUT;
+		return -1;
+	}
+
+	if (ret < 0) {
+		error = errno;
+		if (error == EINTR)
+			goto again;
+
+		fprintf(stderr, "Error, poll on TCP connect has failed: %s\n",
+			strerror(error));
+		fflush(stderr);
+		*errp = error;
+		return -1;
+	}
+
+	error = 0;
+	slt = sizeof(error);
+	ret = getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &error, &slt);
+	if (ret < 0) {
+		error = errno;
+		fprintf(stderr, "Error, failed to retrieve socket error: %s\n",
+			strerror(error));
+		fflush(stderr);
+		*errp = error;
+		return -1;
+	}
+
+	if (error != 0) {
+		*errp = error;
+		return -1;
+	}
+	return 0;
+}
+
 static int system_tcpconn(const char * ipaddr, int portno,
 	const void * ipv4addr, const void * ipv6addr, int timeout)
 {
@@ -565,7 +721,7 @@ static int system_tcpconn(const char * ipaddr, int portno,
 	}
 
 docon:
-	if (sockfd == -1) {
+	if (sockfd < 0) {
 		error = EBADF;
 		goto err0;
 	}
@@ -588,43 +744,8 @@ docon:
 	if (error == ECONNREFUSED)
 		goto err0;
 	if (error == EINPROGRESS) {
-		int err_n, serror;
-		struct pollfd tfd;
-again:
-		tfd.fd = sockfd;
-		tfd.events = POLLOUT | POLLERR | POLLPRI;
-		tfd.revents = 0;
-
-		errno = 0;
-		ret = poll(&tfd, 1, timeout);
-		if (ret == 0) {
-			error = ETIMEDOUT;
-			goto err0;
-		}
-		if (ret == -1) {
-			err_n = errno;
-			if (err_n == EINTR)
-				goto again;
-
-			fprintf(stderr, "Error, poll on TCP connect has failed: %s\n",
-				strerror(err_n));
-			fflush(stderr);
-			error = err_n;
-			goto err0;
-		}
-
-		serror = 0;
-		socklen = sizeof(serror);
-		ret = getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &serror, &socklen);
-		if (ret == -1) {
-			err_n = errno;
-			fprintf(stderr, "Error, failed to retrieve socket error: %s\n",
-				strerror(err_n));
-			fflush(stderr);
-			error = err_n;
-			goto err0;
-		}
-		error = serror;
+		error = 0;
+		tcp_connect_poll(sockfd, timeout, &error);
 	} else if (error != ENETUNREACH) {
 		fprintf(stderr, "Error, TCP connect has failed: %s\n",
 			strerror(error));
@@ -632,7 +753,7 @@ again:
 	}
 
 err0:
-	if (sockfd != -1)
+	if (sockfd >= 0)
 		close(sockfd);
 	return error;
 }
@@ -661,7 +782,7 @@ static int sysutil_tcpcheck(lua_State * L)
 
 	portn = (int) luai;
 	hostip = lua_tolstring(L, 1, NULL);
-	if (hostip == NULL || hostip[0] == '\0' || portn <= 0 || portn >= 0xFFFF) {
+	if (hostip == NULL || hostip[0] == '\0' || portn <= 0 || portn >= 0x10000) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -803,9 +924,7 @@ static int sysutil_timedur(lua_State * L)
 		return 2;
 	}
 
-	if (lua_gettop(L) >= 2 &&
-		lua_type(L, 2) == LUA_TBOOLEAN &&
-		lua_toboolean(L, 2) != 0) {
+	if (lua_gettop(L) >= 2 && lua_toboolean(L, 2)) {
 		long long d = (long long) dur;
 		int msec = (int) (d % 1000);
 		d /= 1000;
@@ -834,6 +953,58 @@ static int sysutil_timedur(lua_State * L)
 	if (ret >= sizeof(tbuf))
 		ret = (int) (sizeof(tbuf) - 1);
 	lua_pushlstring(L, tbuf, (size_t) ret);
+	return 1;
+}
+
+static int sysutil_truncate(lua_State * L)
+{
+	off_t offs;
+	lua_Integer luai;
+	int ret, ntop;
+
+	ntop = lua_gettop(L);
+	if (ntop < 2) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	luai = 0;
+	if (sysutil_isinteger(L, 2, &luai) == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+	offs = (off_t) luai;
+
+	ret = lua_type(L, 1);
+	if (ret == LUA_TNUMBER) {
+		int fd = -1;
+		if (sysutil_isinteger(L, 1, &luai))
+			fd = (int) luai;
+		ret = ftruncate(fd, offs);
+	} else if (ret == LUA_TSTRING) {
+		const char * filp;
+		filp = lua_tolstring(L, 1, NULL);
+		if (filp && filp[0])
+			ret = truncate(filp, offs);
+		else {
+			ret = -1;
+			errno = EINVAL;
+		}
+	} else {
+		lua_pushnil(L);
+		lua_pushinteger(L, ENODEV);
+		return 2;
+	}
+
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+	lua_pushinteger(L, ret);
 	return 1;
 }
 
@@ -907,6 +1078,70 @@ static int sysutil_fcntl_common(lua_State * L,
 	return 1;
 }
 
+static int sysutil_multicast(lua_State * L)
+{
+	lua_Integer luai;
+	int fd, ntop, ret;
+	unsigned int netidx;
+	const char * strptr;
+	struct ip_mreqn ipmr;
+
+	fd = -1;
+	luai = -1;
+	netidx = 0;
+	ntop = lua_gettop(L);
+	if (ntop >= 1 && sysutil_isinteger(L, 1, &luai))
+		fd = (int) luai;
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	strptr = NULL;
+	memset(&ipmr, 0, sizeof(ipmr));
+	if (ntop >= 2 && lua_type(L, 2) == LUA_TSTRING)
+		strptr = lua_tolstring(L, 2, NULL);
+	if (strptr == NULL || inet_pton(AF_INET, strptr, &ipmr.imr_multiaddr.s_addr) != 1) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EAFNOSUPPORT);
+		return 2;
+	}
+
+	strptr = NULL;
+	if (ntop >= 3 && lua_type(L, 3) == LUA_TSTRING) {
+		strptr = lua_tolstring(L, 3, NULL);
+		if (strptr != NULL)
+			netidx = if_nametoindex(strptr);
+	}
+	if (netidx == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ENODEV);
+		return 2;
+	}
+	ipmr.imr_ifindex = (int) netidx;
+
+	if (ntop >= 4 && lua_type(L, 4) == LUA_TSTRING) {
+		strptr = lua_tolstring(L, 4, NULL);
+		if (strptr && strptr[0] && inet_pton(AF_INET, strptr, &ipmr.imr_address.s_addr) != 1)
+			ipmr.imr_address.s_addr = INADDR_ANY;
+	}
+
+	ret = setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &ipmr, sizeof(ipmr));
+	if (ret == -1)
+		goto err0;
+	ret = setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &ipmr, sizeof(ipmr));
+	if (ret == -1) {
+err0:
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
 static int sysutil_nonblock(lua_State * L)
 {
 	return sysutil_fcntl_common(L, F_GETFL, F_SETFL, O_NONBLOCK);
@@ -974,7 +1209,7 @@ static int sysutil_read(lua_State * L)
 
 	luai = 0;
 	maxlen = 512 * 1024 * 1024; /* 512MB */
-	if (flen >= 3 && sysutil_isinteger(L, 3, &luai))
+	if (ntop >= 3 && sysutil_isinteger(L, 3, &luai))
 		maxlen = (size_t) luai;
 	if (flen > maxlen)
 		flen = maxlen;
@@ -994,7 +1229,7 @@ static int sysutil_read(lua_State * L)
 
 	errno = 0;
 	rl1 = read(fd, fild, flen);
-	if (rl1 <= 0) {
+	if (rl1 < 0) {
 		int error = errno;
 		if (isfile)
 			close(fd);
@@ -1006,6 +1241,19 @@ static int sysutil_read(lua_State * L)
 
 	if (isfile)
 		close(fd);
+	luai = 0;
+	if (ntop >= 4)
+		sysutil_isinteger(L, 4, &luai);
+	if (luai & APPUTIL_OPTION_RSTRIP) {
+		while (rl1 > 0) {
+			char c = fild[rl1 - 1];
+			if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\0')
+				rl1--;
+			else
+				break;
+		}
+	}
+
 	lua_pushlstring(L, (const char *) fild, (size_t) rl1);
 	free(fild);
 	return 1;
@@ -1017,21 +1265,15 @@ static int sysutil_waitpid(lua_State * L)
 	lua_Integer luai;
 	int ntop, nohang, est;
 
-	pid = 0;
-	if (sysutil_checkstack(L, 2) < 0)
+	nohang = 0;
+	pid = (pid_t) -1l;
+	if (sysutil_checkstack(L, 3) < 0)
 		return 0;
 
 	luai = 0;
 	ntop = lua_gettop(L);
 	if (ntop >= 1 && sysutil_isinteger(L, 1, &luai))
 		pid = (pid_t) luai;
-	if (pid <= 0l) {
-		lua_pushnil(L);
-		lua_pushinteger(L, EINVAL);
-		return 2;
-	}
-
-	nohang = 0;
 	if (ntop >= 2 && lua_toboolean(L, 2))
 		nohang = WNOHANG;
 
@@ -1047,16 +1289,18 @@ again:
 		return 2;
 	}
 
-	if (pid1 == pid) {
+	if (pid1 > 0) {
 		/* child process not running */
 		lua_pushboolean(L, 0);
 		lua_pushinteger(L, est);
-		return 2;
+		lua_pushinteger(L, (lua_Integer) pid1);
+		return 3;
 	}
 
 	/* child process happily running */
 	lua_pushboolean(L, 1);
-	return 1;
+	lua_pushinteger(L, (lua_Integer) (pid > 0 ? pid : pid1));
+	return 2;
 }
 
 static int sysutil_write(lua_State * L)
@@ -1077,14 +1321,10 @@ static int sysutil_write(lua_State * L)
 	} else if (ret == LUA_TSTRING) {
 		filp = lua_tolstring(L, 1, NULL);
 		if (filp && filp[0]) {
-			int type3 = lua_type(L, 3);
+			lua_Integer luai = 0;
 			int oflags = O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC;
-			if (type3 == LUA_TNUMBER) {
-				lua_Integer luai = lua_tointeger(L, 3);
-				lua_Number luan = lua_tonumber(L, 3);
-				if (luai >= 0 && luan == (lua_Number) luai)
-					oflags = (int) luai;
-			}
+			if (sysutil_isinteger(L, 3, &luai))
+				oflags = (int) luai;
 			fd = open(filp, oflags, 0644);
 		}
 		else
@@ -1501,7 +1741,7 @@ static int sysutil_realpath(lua_State * L)
 		return 2;
 	}
 
-	real = (char *) calloc(0x1, 4096);
+	real = (char *) calloc(0x1, 5000);
 	if (real == NULL) {
 		lua_pushnil(L);
 		lua_pushinteger(L, ENOMEM);
@@ -1517,7 +1757,7 @@ static int sysutil_realpath(lua_State * L)
 		return 2;
 	}
 
-	real[4095] = '\0';
+	real[4999] = '\0';
 	lua_pushstring(L, real);
 	free(real);
 	return 1;
@@ -1551,6 +1791,14 @@ static int sysutil_rename(lua_State * L)
 		return 2;
 	}
 
+	/* the new path should be different to the old */
+	if (len0 == len1 && strcmp(path0, path1) == 0) {
+		ret = EINVAL;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
 	ret = rename(path0, path1);
 	if (ret < 0) {
 		ret = errno;
@@ -1575,16 +1823,18 @@ static int sysutil_unlink(lua_State * L)
 
 	ntop = lua_gettop(L);
 	for (idx = 1; idx <= ntop; ++idx) {
+		size_t lenp;
 		const char * filp;
 		if (lua_type(L, idx) != LUA_TSTRING)
 			continue;
 
-		filp = lua_tolstring(L, idx, NULL);
-		if (filp == NULL || filp[0] == '\0')
+		lenp = 0;
+		filp = lua_tolstring(L, idx, &lenp);
+		if (filp == NULL || lenp == 0)
 			continue;
 
 		if (unlink(filp) == -1)
-			error++;
+			error = errno;
 		else
 			jdx++;
 	}
@@ -1606,16 +1856,18 @@ static int sysutil_rmdir(lua_State * L)
 
 	ntop = lua_gettop(L);
 	for (idx = 1; idx <= ntop; ++idx) {
+		size_t lenp;
 		const char * dirp;
 		if (lua_type(L, idx) != LUA_TSTRING)
 			continue;
 
-		dirp = lua_tolstring(L, 1, NULL);
-		if (dirp == NULL || dirp[0] == '\0')
+		lenp = 0;
+		dirp = lua_tolstring(L, 1, &lenp);
+		if (dirp == NULL || lenp == 0)
 			continue;
 
 		if (rmdir(dirp) == -1)
-			error++;
+			error = errno;
 		else
 			jdx++;
 	}
@@ -2276,10 +2528,11 @@ static int sysutil_chmod(lua_State * L)
 	int ntop, ret;
 	lua_Integer luai;
 
+	ret = 0;
+	luai = 0;
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 
-	luai = 0;
 	ntop = lua_gettop(L);
 	if (ntop < 2 || sysutil_isinteger(L, 2, &luai) == 0) {
 		lua_pushnil(L);
@@ -2288,7 +2541,6 @@ static int sysutil_chmod(lua_State * L)
 	}
 
 	mode = (mode_t) luai;
-	ret = 0;
 	luai = 0;
 	if (sysutil_isinteger(L, 1, &luai)) {
 		int pfd = (int) luai;
@@ -2434,6 +2686,108 @@ static int sysutil_open(lua_State * L)
 	}
 
 	lua_pushinteger(L, fd);
+	return 1;
+}
+
+static int sysutil_poll(lua_State * L)
+{
+	lua_Integer integer;
+	struct pollfd pfds[128];
+	int ret, timeout, numfds, i, ntop;
+
+	integer = 0;
+	if (sysutil_isinteger(L, 2, &integer) == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+	timeout = (int) integer;
+
+	ret = lua_type(L, 1);
+	if (ret != LUA_TTABLE) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	numfds = 0;
+	ntop = lua_gettop(L);
+	lua_pushnil(L);
+	while (lua_next(L, 1) != 0) {
+		int fd;
+
+		integer = -1;
+		if (sysutil_isinteger(L, ntop + 1, &integer) == 0)
+			break;
+		fd = (int) integer;
+		if (fd < 0) {
+			lua_settop(L, ntop + 1);
+			continue;
+		}
+
+		integer = 0;
+		if (sysutil_isinteger(L, ntop + 2, &integer) == 0)
+			break;
+		if (integer == 0) {
+			lua_settop(L, ntop + 1);
+			continue;
+		}
+
+		pfds[numfds].fd = fd;
+		pfds[numfds].events = (short) integer;
+		pfds[numfds].revents = 0;
+		if (++numfds >= 128)
+			break;
+		lua_settop(L, ntop + 1);
+	}
+
+	lua_settop(L, ntop);
+	if (numfds == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	ret = poll(pfds, (nfds_t) numfds, timeout);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	if (ret == 0) {
+		ret = ETIMEDOUT;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	ret = 0;
+	for (i = 0; i < numfds; ++i) {
+		if (pfds[i].revents != 0)
+			ret++;
+	}
+
+	if (ret == 0) {
+		ret = EFAULT;
+		fprintf(stderr, "Fatal error, poll has returned zero event: %d\n", numfds);
+		fflush(stderr);
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_createtable(L, 0, ret + 1);
+	for (i = 0; i < numfds; ++i) {
+		if (pfds[i].revents != 0) {
+			lua_pushinteger(L, (lua_Integer) pfds[i].revents);
+			lua_rawseti(L, ntop + 1, pfds[i].fd);
+		}
+	}
+
+	if ((ntop + 1) != lua_gettop(L))
+		lua_settop(L, ntop + 1);
 	return 1;
 }
 
@@ -2877,6 +3231,46 @@ static int sysutil_basename(lua_State * L)
 	return 2;
 }
 
+static int sysutil_listen(lua_State * L)
+{
+	lua_Integer value;
+	int fd, back_log, ret;
+
+	fd = -1;
+	back_log = 128;
+	ret = lua_gettop(L);
+	if (ret <= 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	value = -1;
+	if (sysutil_isinteger(L, 1, &value))
+		fd = (int) value;
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	if (ret >= 2 && sysutil_isinteger(L, 2, &value)) {
+		back_log = (int) value;
+		if (back_log < 0)
+			back_log = 128;
+	}
+
+	ret = listen(fd, back_log);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
 static int sysutil_lockfile(lua_State * L)
 {
 	char * fptr;
@@ -3001,9 +3395,643 @@ static int sysutil_lockfile(lua_State * L)
 	return 1;
 }
 
+static int sysutil_sockopt(lua_State * L)
+{
+	socklen_t optlen;
+	int fd, ret, isget;
+	lua_Integer value;
+	int level, optname, optval;
+
+	isget = 0;
+	ret = lua_gettop(L);
+	if (ret < 5) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	value = -1;
+	/* get socket file descriptor */
+	if (sysutil_isinteger(L, 1, &value) == 0)
+		goto error;
+	fd = (int) value;
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	/* get or set socket option */
+	if (lua_type(L, 2) == LUA_TBOOLEAN)
+		isget = lua_toboolean(L, 2);
+	/* the socket level we're manipulating */
+	if (sysutil_isinteger(L, 3, &value) == 0)
+		goto error;
+	level = (int) value;
+
+	/* the socket option we're manipulating */
+	if (sysutil_isinteger(L, 4, &value) == 0)
+		goto error;
+	optname = (int) value;
+
+	/* get the socket option value */
+	if (sysutil_isinteger(L, 5, &value) == 0) {
+error:
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+	optval = (int) value;
+	optlen = sizeof(optval);
+
+	if (isget != 0)
+		ret = getsockopt(fd, level, optname, &optval, &optlen);
+	else
+		ret = setsockopt(fd, level, optname, &optval, optlen);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, ret);
+	lua_pushinteger(L, optval);
+	return 2;
+}
+
+static int sysutil_socktime(lua_State * L)
+{
+	lua_Integer value;
+	struct timeval tv;
+	int fd, ret, isrecv;
+
+	isrecv = 1;
+	ret = lua_gettop(L);
+	if (ret < 3) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	value = -1;
+	/* get socket file descriptor */
+	if (sysutil_isinteger(L, 1, &value) == 0)
+		goto error;
+	fd = (int) value;
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	/* receive or send timeout socket option */
+	if (lua_type(L, 2) == LUA_TBOOLEAN)
+		isrecv = lua_toboolean(L, 2);
+
+	value = -1;
+	/* the socket level we're manipulating */
+	if (sysutil_isinteger(L, 3, &value) == 0 || value < 0) {
+error:
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	tv.tv_sec = (time_t) value;
+	tv.tv_usec = 0;
+	ret = setsockopt(fd, SOL_SOCKET, isrecv ? SO_RCVTIMEO : SO_SNDTIMEO, &tv, sizeof(tv));
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
+static int sysutil_connect(lua_State * L)
+{
+	lua_Integer value;
+	size_t addrlen;
+	const char * paddr;
+	int ret, fd, port, addr_f, timeout;
+
+	port = 0;
+	addr_f = 0;
+	addrlen = 0;
+	paddr = NULL;
+	timeout = 2500;
+	ret = lua_gettop(L);
+	if (ret < 4) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	/* get the connection timeout in milliseconds */
+	if (ret >= 5) {
+		value = 0;
+		if (sysutil_isinteger(L, 5, &value) && value > 0)
+			timeout = (int) value;
+	}
+
+	value = -1;
+	/* get the socket file descriptor */
+	if (sysutil_isinteger(L, 1, &value) == 0)
+		goto error;
+
+	fd = (int) value;
+	/* check for the socket file descriptor */
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	value = 0;
+	/* get the address family type */
+	if (sysutil_isinteger(L, 2, &value) == 0)
+		goto error;
+	addr_f = (int) value;
+	if (addr_f != AF_INET && addr_f != AF_INET6 && addr_f != AF_UNIX) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EAFNOSUPPORT);
+		return 2;
+	}
+
+	/* get the address as string */
+	if (lua_type(L, 3) == LUA_TSTRING)
+		paddr = lua_tolstring(L, 3, &addrlen);
+	if (paddr == NULL || addrlen == 0)
+		goto error;
+
+	value = -1;
+	/* fetch the port number, not needed for AF_UNIX */
+	if (sysutil_isinteger(L, 4, &value) == 0) {
+error:
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+	port = (int) value;
+	if ((addr_f != AF_UNIX) && (port <= 0 || port >= 65536)) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	if (addr_f == AF_INET) {
+		struct sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
+		ret = inet_pton(AF_INET, paddr, &addr.sin_addr);
+		addr.sin_port = htons((unsigned short) port);
+		if (ret != 1) {
+			lua_pushnil(L);
+			lua_pushinteger(L, EAFNOSUPPORT);
+			return 2;
+		}
+		ret = connect(fd, (const struct sockaddr *) &addr, sizeof(addr));
+	} else if (addr_f == AF_INET6) {
+		struct sockaddr_in6 addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin6_family = AF_INET6;
+		ret = inet_pton(AF_INET6, paddr, &addr.sin6_addr);
+		addr.sin6_port = htons((unsigned short) port);
+		if (ret != 1) {
+			lua_pushnil(L);
+			lua_pushinteger(L, EAFNOSUPPORT);
+			return 2;
+		}
+		ret = connect(fd, (const struct sockaddr *) &addr, sizeof(addr));
+	} else /* if (addr_f == AF_UNIX) */ {
+		struct sockaddr_un addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sun_family = AF_UNIX;
+		memcpy(addr.sun_path, paddr,
+			addrlen >= sizeof(addr.sun_path) ? sizeof(addr.sun_path) - 1 : addrlen);
+		ret = connect(fd, (const struct sockaddr *) &addr, sizeof(addr));
+	}
+
+	if (ret < 0) {
+		int err;
+		ret = errno;
+		if (ret != EINPROGRESS) {
+			lua_pushnil(L);
+			lua_pushinteger(L, ret);
+			return 2;
+		}
+
+		err = 0;
+		ret = tcp_connect_poll(fd, timeout, &err);
+		if (ret < 0) {
+			lua_pushnil(L);
+			lua_pushinteger(L, err);
+			return 2;
+		}
+	}
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
+static int sysutil_bind(lua_State * L)
+{
+	lua_Integer value;
+	size_t addrlen;
+	const char * paddr;
+	int ret, fd, port, addr_f;
+
+	port = 0;
+	addr_f = 0;
+	addrlen = 0;
+	paddr = NULL;
+	ret = lua_gettop(L);
+	if (ret < 4) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	value = -1;
+	/* get the socket file descriptor */
+	if (sysutil_isinteger(L, 1, &value) == 0)
+		goto error;
+
+	fd = (int) value;
+	/* check for the socket file descriptor */
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	value = 0;
+	/* get the address family type */
+	if (sysutil_isinteger(L, 2, &value) == 0)
+		goto error;
+	addr_f = (int) value;
+	if (addr_f != AF_INET &&
+		addr_f != AF_INET6 &&
+		addr_f != AF_NETLINK &&
+		addr_f != AF_UNIX) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EAFNOSUPPORT);
+		return 2;
+	}
+
+	/* get the address as string */
+	if (lua_type(L, 3) == LUA_TSTRING)
+		paddr = lua_tolstring(L, 3, &addrlen);
+	if (paddr == NULL || addrlen == 0)
+		goto error;
+
+	value = -1;
+	/* fetch the port number */
+	if (sysutil_isinteger(L, 4, &value) == 0) {
+error:
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+	port = (int) value;
+	if ((addr_f != AF_NETLINK) && (port < 0 || port >= 65536)) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	if (addr_f == AF_INET) {
+		struct sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
+		ret = inet_pton(AF_INET, paddr, &addr.sin_addr);
+		addr.sin_port = htons((unsigned short) port);
+		if (ret != 1) {
+			lua_pushnil(L);
+			lua_pushinteger(L, EAFNOSUPPORT);
+			return 2;
+		}
+		ret = bind(fd, (const struct sockaddr *) &addr, sizeof(addr));
+	} else if (addr_f == AF_INET6) {
+		struct sockaddr_in6 addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin6_family = AF_INET6;
+		ret = inet_pton(AF_INET6, paddr, &addr.sin6_addr);
+		addr.sin6_port = htons((unsigned short) port);
+		if (ret != 1) {
+			lua_pushnil(L);
+			lua_pushinteger(L, EAFNOSUPPORT);
+			return 2;
+		}
+		ret = bind(fd, (const struct sockaddr *) &addr, sizeof(addr));
+	} else if (addr_f == AF_NETLINK) {
+		char * endptr;
+		unsigned int pid;
+		struct sockaddr_nl addr;
+
+		errno = 0;
+		endptr = NULL;
+		pid = (unsigned int) strtoul(paddr, &endptr, 0);
+		if (errno != 0 || endptr == paddr || pid == ~0ul)
+			pid = 0;
+		memset(&addr, 0, sizeof(addr));
+		addr.nl_family = AF_NETLINK;
+		addr.nl_pid = pid;
+		addr.nl_groups = (unsigned int) port;
+		ret = bind(fd, (const struct sockaddr *) &addr, sizeof(addr));
+	} else /* if (addr_f == AF_UNIX) */ {
+		struct sockaddr_un addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sun_family = AF_UNIX;
+		memcpy(addr.sun_path, paddr,
+			addrlen >= sizeof(addr.sun_path) ? sizeof(addr.sun_path) - 1 : addrlen);
+		ret = bind(fd, (const struct sockaddr *) &addr, sizeof(addr));
+	}
+
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
+static int sysutil_bindto(lua_State * L)
+{
+	int ret, fd;
+	size_t devlen;
+	lua_Integer luai;
+	const char * ndev;
+	char netdev[IFNAMSIZ + 1];
+
+	fd = -1;
+	luai = -1;
+	devlen = 0;
+	ndev = NULL;
+
+	ret = lua_gettop(L);
+	if (ret >= 1 && sysutil_isinteger(L, 1, &luai))
+		fd = (int) luai;
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	if (ret >= 2 && lua_type(L, 2) == LUA_TSTRING)
+		ndev = lua_tolstring(L, 2, &devlen);
+	memset(netdev, 0, sizeof(netdev));
+	if (ndev != NULL && devlen > 0) {
+		strncpy(netdev, ndev, IFNAMSIZ);
+		devlen = strlen(netdev);
+	}
+	ret = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, netdev, (socklen_t) devlen);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
+static int sysutil_socket(lua_State * L)
+{
+	int ret;
+	lua_Integer value;
+	int domain, type, proto;
+
+	ret = lua_gettop(L);
+	if (ret < 3) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	value = 0;
+	ret = EINVAL;
+	if (sysutil_isinteger(L, 1, &value) == 0)
+		goto error;
+	domain = (int) value;
+
+	if (sysutil_isinteger(L, 2, &value) == 0)
+		goto error;
+	type = (int) value;
+	type |= SOCK_CLOEXEC;
+
+	if (sysutil_isinteger(L, 3, &value) == 0)
+		goto error;
+	proto = (int) value;
+
+	ret = socket(domain, type, proto);
+	if (ret < 0) {
+		ret = errno;
+error:
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
+static int sysutil_recvfrom(lua_State * L)
+{
+	ssize_t rval;
+	socklen_t slt;
+	int ret, fd, Flags;
+	size_t buflen;
+	lua_Integer value;
+	char * buf, addr[128];
+
+	buf = NULL;
+	buflen = 0;
+	ret = lua_gettop(L);
+	if (ret < 3) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	value = -1;
+	if (sysutil_isinteger(L, 1, &value) == 0)
+		goto error;
+	fd = (int) value;
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	value = 0;
+	if (sysutil_isinteger(L, 2, &value) == 0)
+		goto error;
+	if (value <= 0 || value > 262144)
+		buflen = 8192;
+	else
+		buflen = (size_t) value;
+
+	value = 0;
+	if (sysutil_isinteger(L, 3, &value) == 0) {
+error:
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+	Flags = (int) value;
+
+	buf = (char *) malloc(buflen);
+	if (buf == NULL) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ENOMEM);
+		return 2;
+	}
+
+	slt = sizeof(addr);
+	memset(addr, 0, sizeof(addr));
+	rval = recvfrom(fd, buf, buflen, Flags, (struct sockaddr *) addr, &slt);
+	if (rval < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		free(buf);
+		return 2;
+	}
+
+	lua_pushlstring(L, buf, (size_t) rval);
+	free(buf);
+	return sysutil_push_addr(L, addr, slt, 1);
+}
+
+static int sysutil_sendto(lua_State * L)
+{
+	ssize_t rval;
+	size_t len, addrlen;
+	lua_Integer value;
+	int ntop, fd, port, Flags;
+	const char * pd, * addrp;
+	struct sockaddr_in  v4addr;
+	struct sockaddr_in6 v6addr;
+	struct sockaddr_un  unaddr;
+
+	len = 0;
+	port = 0;
+	pd = NULL;
+	addrlen = 0;
+	addrp = NULL;
+	ntop = lua_gettop(L);
+	if (ntop < 3) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	value = -1;
+	if (sysutil_isinteger(L, 1, &value) == 0)
+		goto error;
+	fd = (int) value;
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	if (lua_type(L, 2) == LUA_TSTRING)
+		pd = lua_tolstring(L, 2, &len);
+	if (pd == NULL || len == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	value = 0;
+	if (sysutil_isinteger(L, 3, &value) == 0) {
+error:
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+	Flags = (int) value;
+
+	if (ntop >= 4 && lua_type(L, 4) == LUA_TSTRING)
+		addrp = lua_tolstring(L, 4, &addrlen);
+	if (addrp && addrlen > 0 && ntop >= 5) {
+		value = 0;
+		if (sysutil_isinteger(L, 5, &value))
+			port = (int) value;
+	}
+
+	if (addrp == NULL || addrlen == 0) {
+		rval = send(fd, pd, len, Flags);
+		if (rval < 0) {
+			fd = errno;
+			lua_pushnil(L);
+			lua_pushinteger(L, fd);
+			return 2;
+		}
+		lua_pushinteger(L, (lua_Integer) rval);
+		return 1;
+	}
+
+	memset(&v4addr, 0, sizeof(v4addr));
+	if (inet_pton(AF_INET, addrp, &v4addr.sin_addr) == 1) {
+		v4addr.sin_family = AF_INET;
+		v4addr.sin_port = htons((unsigned short) port);
+		rval = sendto(fd, pd, len, Flags, (struct sockaddr *) &v4addr, sizeof(v4addr));
+		if (rval < 0) {
+			fd = errno;
+			lua_pushnil(L);
+			lua_pushinteger(L, fd);
+			return 2;
+		}
+		lua_pushinteger(L, (lua_Integer) rval);
+		return 1;
+	}
+
+	memset(&v6addr, 0, sizeof(v6addr));
+	if (inet_pton(AF_INET6, addrp, &v6addr.sin6_addr) == 1) {
+		v6addr.sin6_family = AF_INET6;
+		v6addr.sin6_port = htons((unsigned short) port);
+		rval = sendto(fd, pd, len, Flags, (struct sockaddr *) &v6addr, sizeof(v6addr));
+		if (rval < 0) {
+			fd = errno;
+			lua_pushnil(L);
+			lua_pushinteger(L, fd);
+			return 2;
+		}
+		lua_pushinteger(L, (lua_Integer) rval);
+		return 1;
+	}
+
+	memset(&unaddr, 0, sizeof(unaddr));
+	unaddr.sun_family = AF_UNIX;
+	memcpy(unaddr.sun_path, addrp,
+		addrlen >= sizeof(unaddr.sun_path) ? sizeof(unaddr.sun_path) - 1 : addrlen);
+	rval = sendto(fd, pd, len, Flags, (struct sockaddr *) &unaddr, sizeof(unaddr));
+	if (rval < 0) {
+		fd = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, fd);
+		return 2;
+	}
+	lua_pushinteger(L, (lua_Integer) rval);
+	return 1;
+}
+
 static const luaL_Reg sysutil_regs[] = {
+	{ "accept",         sysutil_accept },
 	{ "base64",         sysutil_base64 },
 	{ "basename",       sysutil_basename },
+	{ "bind",           sysutil_bind },
+	{ "bindto",         sysutil_bindto },
 	{ "call",           sysutil_call },
 	{ "chdir",          sysutil_chdir },
 	{ "checkip",        sysutil_checkip },
@@ -3011,6 +4039,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "chmod",          sysutil_chmod },
 	{ "cloexec",        sysutil_cloexec },
 	{ "close",          sysutil_close },
+	{ "connect",        sysutil_connect },
 	{ "delay",          sysutil_delay },
 	{ "dirname",        sysutil_dirname },
 	{ "exitval",        sysutil_exitval },
@@ -3025,37 +4054,47 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "kill",           sysutil_kill },
 	{ "killid",         sysutil_killid },      /* calls pthread_kill(...) */
 	{ "killpg",         sysutil_killpg },
+	{ "listen",         sysutil_listen },
 	{ "lockfile",       sysutil_lockfile },
 	{ "lseek",          sysutil_lseek },
 	{ "mdelay",         sysutil_mdelay },
 	{ "mkdir",          sysutil_mkdir },
 	{ "mkfifo",         sysutil_mkfifo },
 	{ "mountpoint",     sysutil_mountpoint },
+	{ "multicast",      sysutil_multicast },
 	{ "nonblock",       sysutil_nonblock },
 	{ "open",           sysutil_open },
+	{ "poll",           sysutil_poll },
 	{ "read",           sysutil_read },
+	{ "recvfrom",       sysutil_recvfrom },
 	{ "readlink",       sysutil_readlink },
 	{ "readpass",       sysutil_readpass },
 	{ "realpath",       sysutil_realpath },
 	{ "rename",         sysutil_rename },
 	{ "rmdir",          sysutil_rmdir },
+	{ "sendto",         sysutil_sendto },
 	{ "setenv",         sysutil_setenv },
 	{ "setname",        sysutil_setname },
 	{ "sha256",         sysutil_sha256 },
 	{ "signal",         sysutil_signal },
 	{ "stat",           sysutil_stat },
 	{ "strerror",       sysutil_strerror },
+	{ "socket",         sysutil_socket },
+	{ "sockopt",        sysutil_sockopt },
+	{ "socktime",       sysutil_socktime },
 	{ "symlink",        sysutil_symlink },
 	{ "sync",           sysutil_sync },
 	{ "tcpcheck",       sysutil_tcpcheck },
 	{ "timestr",        sysutil_timestr },
 	{ "timedur",        sysutil_timedur },
+	{ "truncate",       sysutil_truncate },
 	{ "unlink",         sysutil_unlink },
 	{ "upmsec",         sysutil_upmsec },
 	{ "uptime",         sysutil_uptime },
 	{ "waitpid",        sysutil_waitpid },
 	{ "write",          sysutil_write },
 	{ "zipstdio",       sysutil_zipstdio },
+	{ place_holder,     NULL },
 	{ place_holder,     NULL },
 	{ place_holder,     NULL },
 	{ place_holder,     NULL },
@@ -3100,11 +4139,14 @@ int luaopen_sysutil(lua_State * L)
 	lua_pushinteger(L, APPUTIL_OPTION_LOWPRI);
 	lua_setfield(L, -2, "OPT_LOWPRI");
 
+	lua_pushinteger(L, APPUTIL_OPTION_EXEC);
+	lua_setfield(L, -2, "OPT_EXEC");
+
 	lua_pushinteger(L, APPUTIL_OPTION_SYMLINK);
 	lua_setfield(L, -2, "OPT_SYMLINK");
 
-	lua_pushinteger(L, APPUTIL_OPTION_EXEC);
-	lua_setfield(L, -2, "OPT_EXEC");
+	lua_pushinteger(L, APPUTIL_OPTION_RSTRIP);
+	lua_setfield(L, -2, "OPT_RSTRIP");
 
 	lua_pushinteger(L, ETIMEDOUT);
 	lua_setfield(L, -2, "ETIMEDOUT");
