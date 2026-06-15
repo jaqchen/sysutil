@@ -2,3 +2,5 @@
 *.so
 .*.swp
 /zsha256
+/compile_commands.json
+.cache/
