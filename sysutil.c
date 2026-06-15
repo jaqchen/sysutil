@@ -1865,7 +1865,7 @@ static int sysutil_rmdir(lua_State * L)
 			continue;
 
 		lenp = 0;
-		dirp = lua_tolstring(L, 1, &lenp);
+		dirp = lua_tolstring(L, idx, &lenp);
 		if (dirp == NULL || lenp == 0)
 			continue;
 
