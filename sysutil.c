@@ -4204,7 +4204,11 @@ static const luaL_Reg sysutil_regs[] = {
 
 int luaopen_sysutil(lua_State * L)
 {
+#if LUA_VERSION_NUM >= 502
+	luaL_newlib(L, sysutil_regs);
+#else
 	luaL_register(L, "sysutil", sysutil_regs);
+#endif
 
 	lua_pushinteger(L, APPUTIL_OPTION_NULLIO);
 	lua_setfield(L, -2, "OPT_NULLIO");

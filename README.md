@@ -10,7 +10,7 @@ The most important method provided by `sysutil`, is the command executor `call`,
 
 The `sysutil` is now under heavy development, but not for long. It does not employ complex objects or data structures provided by Lua, such as `userdata` or `lightusedata` types; just to keep the code less complex and compatible with newer version of Lua interpreters. Bug fixes are welcome, but any changes that introduces third-party dependencies are discouraged. There is a list of goals that are to be accomplished:
 
-- [ ] Compatibility with `Lua5.2/Lua5.2/Lua5.4` (without using `lua-compat-5.3`).
+- [x] Compatibility with `Lua5.2/Lua5.3/Lua5.4` (without using `lua-compat-5.3`).
 - [ ] All the methods should be tested, any test-cases are welcome.
 - [ ] All the methods should be documented.
 - [ ] The Lua module should be able to release via [LuaRocks](https://luarocks.org/).

@@ -13,10 +13,12 @@
 #  limitations under the License.
 
 MAKEFLAGS += -r -R
-CC         = gcc
-STRIP      = strip
-CFLAGS     = -Wall -fPIC -D_GNU_SOURCE -ggdb -Os -I.
-CFLAGS    += -I/usr/include/lua5.1 $(EXTRA_CFLAGS)
+CC        ?= gcc
+STRIP     ?= strip
+
+
+CFLAGS     = -Wall -Wno-unused-result -fPIC -D_GNU_SOURCE -ggdb -Os
+CFLAGS    += -I. -I$(LUA_INCDIR) $(EXTRA_CFLAGS)
 LDFLAGS   := -lpthread
 TARGETS    = apputil.o base64.o sysutil.so sysutil.o zsha256_util.o zsha256_test.o zsha256
 
@@ -32,6 +34,9 @@ zsha256: zsha256_test.o zsha256_util.o apputil.o
 
 %.o: %.c apputil.h
 	$(CC) -c $(CFLAGS) -o $@ $<
+
+install:
+	@true
 
 clean:
 	rm -rf *.o $(TARGETS)

@@ -1,4 +1,4 @@
-#!/usr/bin/lua5.1
+#!/usr/bin/env lua
 
 -- Created by yejq.jiaqiang@gmail.com
 -- System Constants Definitions

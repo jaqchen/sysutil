@@ -4,3 +4,8 @@
 /zsha256
 /compile_commands.json
 .cache/
+
+# luarocks
+*.rock
+/lua_modules/
+*.src.rock
