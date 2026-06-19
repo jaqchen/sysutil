@@ -3486,14 +3486,14 @@ static int sysutil_lockfile(lua_State * L)
 	return 1;
 }
 
-static int sysutil_sockopt(lua_State * L)
+static int sysutil_getsockopt(lua_State * L)
 {
+	int fd, ret;
 	socklen_t optlen;
-	int fd, ret, isget;
 	lua_Integer value;
-	int level, optname, optval;
+	int level, optval;
 
-	isget = 0;
+	optval = 0;
 	ret = lua_gettop(L);
 	if (ret < 5) {
 		lua_pushnil(L);
@@ -3512,21 +3512,72 @@ static int sysutil_sockopt(lua_State * L)
 		return 2;
 	}
 
-	/* get or set socket option */
-	if (lua_type(L, 2) == LUA_TBOOLEAN)
-		isget = lua_toboolean(L, 2);
 	/* the socket level we're manipulating */
-	if (sysutil_isinteger(L, 3, &value) == 0)
+	if (sysutil_isinteger(L, 2, &value) == 0)
+		goto error;
+	level = (int) value;
+
+	value = 0;
+	/* the socket option we're manipulating */
+	if (sysutil_isinteger(L, 3, &value) == 0) {
+error:
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	optlen = sizeof(optval);
+	ret = getsockopt(fd, level, (int) value, &optval, &optlen);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, ret);
+	lua_pushinteger(L, optval);
+	return 2;
+}
+
+static int sysutil_setsockopt(lua_State * L)
+{
+	socklen_t optlen;
+	int fd, ret;
+	lua_Integer value;
+	int level, optname, optval;
+
+	ret = lua_gettop(L);
+	if (ret < 5) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	value = -1;
+	/* get socket file descriptor */
+	if (sysutil_isinteger(L, 1, &value) == 0)
+		goto error;
+	fd = (int) value;
+	if (fd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	/* the socket level we're manipulating */
+	if (sysutil_isinteger(L, 2, &value) == 0)
 		goto error;
 	level = (int) value;
 
 	/* the socket option we're manipulating */
-	if (sysutil_isinteger(L, 4, &value) == 0)
+	if (sysutil_isinteger(L, 3, &value) == 0)
 		goto error;
 	optname = (int) value;
 
+	value = 0;
 	/* get the socket option value */
-	if (sysutil_isinteger(L, 5, &value) == 0) {
+	if (sysutil_isinteger(L, 4, &value) == 0) {
 error:
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
@@ -3535,10 +3586,7 @@ error:
 	optval = (int) value;
 	optlen = sizeof(optval);
 
-	if (isget != 0)
-		ret = getsockopt(fd, level, optname, &optval, &optlen);
-	else
-		ret = setsockopt(fd, level, optname, &optval, optlen);
+	ret = setsockopt(fd, level, optname, &optval, optlen);
 	if (ret < 0) {
 		ret = errno;
 		lua_pushnil(L);
@@ -4137,12 +4185,13 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "dirname",        sysutil_dirname },
 	{ "exitval",        sysutil_exitval },
 	{ "fcntl",          sysutil_fcntl },
+	{ "getcwd",         sysutil_getcwd },
 	{ "getenv",         sysutil_getenv },
 	{ "getid",          sysutil_getid },       /* calls pthread_self() */
 	{ "getpid",         sysutil_getpid },
 	{ "getppid",        sysutil_getppid },
-	{ "getcwd",         sysutil_getcwd },
 	{ "getrlimit",      sysutil_getrlimit },
+	{ "getsockopt",     sysutil_getsockopt },
 	{ "glob",           sysutil_glob },
 	{ "inotify",        sysutil_inotify },
 	{ "kill",           sysutil_kill },
@@ -4160,28 +4209,28 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "open",           sysutil_open },
 	{ "poll",           sysutil_poll },
 	{ "read",           sysutil_read },
-	{ "recvfrom",       sysutil_recvfrom },
 	{ "readlink",       sysutil_readlink },
 	{ "readpass",       sysutil_readpass },
 	{ "realpath",       sysutil_realpath },
+	{ "recvfrom",       sysutil_recvfrom },
 	{ "rename",         sysutil_rename },
 	{ "rmdir",          sysutil_rmdir },
 	{ "sendto",         sysutil_sendto },
 	{ "setenv",         sysutil_setenv },
 	{ "setname",        sysutil_setname },
 	{ "setrlimit",      sysutil_setrlimit },
+	{ "setsockopt",     sysutil_setsockopt },
 	{ "sha256",         sysutil_sha256 },
 	{ "signal",         sysutil_signal },
+	{ "socket",         sysutil_socket },
+	{ "socktime",       sysutil_socktime },
 	{ "stat",           sysutil_stat },
 	{ "strerror",       sysutil_strerror },
-	{ "socket",         sysutil_socket },
-	{ "sockopt",        sysutil_sockopt },
-	{ "socktime",       sysutil_socktime },
 	{ "symlink",        sysutil_symlink },
 	{ "sync",           sysutil_sync },
 	{ "tcpcheck",       sysutil_tcpcheck },
-	{ "timestr",        sysutil_timestr },
 	{ "timedur",        sysutil_timedur },
+	{ "timestr",        sysutil_timestr },
 	{ "truncate",       sysutil_truncate },
 	{ "unlink",         sysutil_unlink },
 	{ "upmsec",         sysutil_upmsec },

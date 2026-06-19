@@ -17,7 +17,7 @@ CC        ?= gcc
 STRIP     ?= strip
 
 CFLAGS    := -Wall -Wno-unused-result -fPIC -D_GNU_SOURCE -ggdb -O2
-CFLAGS    += -fno-omit-frame-poitner -I. $(if $(LUA_INCDIR),-I$(LUA_INCDIR)) $(EXTRA_CFLAGS)
+CFLAGS    += -fno-omit-frame-pointer -I. $(if $(LUA_INCDIR),-I$(LUA_INCDIR)) $(EXTRA_CFLAGS)
 LDFLAGS   := -lpthread
 TARGETS    = apputil.o base64.o sysutil.so sysutil.o zsha256_util.o zsha256_test.o zsha256
 
