@@ -1,5 +1,5 @@
 package = "sysutil"
-version = "1.0.0-2"
+version = "1.0.1-0"
 
 source = {
 	url = "git://github.com/jaqchen/sysutil",
