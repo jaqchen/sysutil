@@ -1469,7 +1469,7 @@ static int sysutil_sha256(lua_State * L)
 
 	zsha256_init(&sha256);
 	if (isfile) {
-		int fd, error;
+		int fd, error = 0;
 		unsigned char * bufp;
 		const size_t rsize = 256 * 1024;
 
@@ -1490,7 +1490,7 @@ static int sysutil_sha256(lua_State * L)
 		}
 
 		for (;;) {
-			size_t rl1;
+			ssize_t rl1;
 			rl1 = read(fd, bufp, rsize);
 			if (rl1 < 0) {
 				error = errno;
@@ -1511,6 +1511,12 @@ static int sysutil_sha256(lua_State * L)
 
 		close(fd);
 		free(bufp);
+
+		if (error != 0) { /* failed to read */
+			lua_pushnil(L);
+			lua_pushinteger(L, error);
+			return 2;
+		}
 	} else {
 		zsha256_update(&sha256,
 			(const unsigned char *) filp, (unsigned int) flen);
