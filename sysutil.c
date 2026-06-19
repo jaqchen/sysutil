@@ -4271,7 +4271,6 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "getid",          sysutil_getid },       /* calls pthread_self() */
 	{ "getpid",         sysutil_getpid },
 	{ "getppid",        sysutil_getppid },
-	{ "getcwd",         sysutil_getcwd },
 	{ "getsockname",    sysutil_getsockname },
 	{ "getpeername",    sysutil_getpeername },
 	{ "getrlimit",      sysutil_getrlimit },
