@@ -4,6 +4,7 @@
 /zsha256
 /compile_commands.json
 .cache/
+/Session.vim
 
 # luarocks
 *.rock
