@@ -4264,7 +4264,7 @@ static int sysutil_cgroup_create(lua_State *L)
 
 	grpnam = controllers = NULL;
 	ret = lua_checkstack(L, 2);
-	if (ret < 0)
+	if (ret == 0)
 		return 0;
 	ntop = lua_gettop(L);
 
@@ -4326,7 +4326,7 @@ static int sysutil_cgroup_attach(lua_State *L)
 	pid = 0;
 	value = 0;
 	ret = lua_checkstack(L, 2);
-	if (ret < 0)
+	if (ret == 0)
 		return 0;
 	ntop = lua_gettop(L);
 
@@ -4398,7 +4398,7 @@ static int sysutil_cgroup_detach(lua_State *L)
 	value = 0;
 	rawcgrp = NULL;
 	ret = lua_checkstack(L, 2);
-	if (ret < 0)
+	if (ret == 0)
 		return 0;
 	ntop = lua_gettop(L);
 
@@ -4469,7 +4469,7 @@ static int sysutil_cgroup_set(lua_State *L)
 	ssize_t n;
 
 	ret = lua_checkstack(L, 2);
-	if (ret < 0)
+	if (ret == 0)
 		return 0;
 	attr = valstr = NULL;
 	value = 0;
@@ -4521,7 +4521,7 @@ static int sysutil_cgroup_get(lua_State *L)
 	ssize_t n;
 
 	ret = lua_checkstack(L, 2);
-	if (ret < 0)
+	if (ret == 0)
 		return 0;
 	attr = NULL;
 	cgfd = -1;
@@ -4579,7 +4579,7 @@ static int sysutil_cgroup_destroy(lua_State *L)
 	value = 0;
 	cgfd = -1;
 	ret = lua_checkstack(L, 2);
-	if (ret < 0)
+	if (ret == 0)
 		return 0;
 	ntop = lua_gettop(L);
 
