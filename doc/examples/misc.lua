@@ -1,7 +1,7 @@
 #!/usr/bin/env lua
 
 local M = require 'sysutil'
-local C = require 'syscon'
+local C = require 'sysutil.syscon'
 
 local s = M.strerror(C.ENOENT)
 assert(type(s) == 'string',      "strerror(ENOENT): expected string")

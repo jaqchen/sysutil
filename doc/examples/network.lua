@@ -1,7 +1,7 @@
 #!/usr/bin/env lua
 
 local M = require 'sysutil'
-local C = require 'syscon'
+local C = require 'sysutil.syscon'
 
 -- TCP
 local srv = M.socket(C.AF_INET, C.SOCK_STREAM, C.IPPROTO_TCP)
