@@ -87,7 +87,7 @@ unsigned char * appf_readfile(const char * filp,
 	}
 
 	rsize = maxsize;
-	if (maxsize > (unsigned int) fst.st_size)
+	if (fst.st_size > 0 && maxsize > (unsigned int) fst.st_size)
 		rsize = (unsigned int) fst.st_size;
 
 	fd = open(filp, O_RDONLY | O_CLOEXEC);

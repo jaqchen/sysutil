@@ -75,7 +75,7 @@ static int sysutil_checkstack(lua_State * lua, int num)
 	return 0;
 }
 
-static inline int sysutil_emptystr(const char * p)
+static inline int empty_str(const char * p)
 {
 	if (p == NULL)
 		return 1;
@@ -186,7 +186,7 @@ static int sysutil_accept(lua_State * L)
 {
 	socklen_t slt;
 	char addr[128];
-	lua_Integer value;
+	lua_Integer l_int;
 	int fd, ret, newfd, Flags;
 
 	fd = -1;
@@ -198,9 +198,9 @@ static int sysutil_accept(lua_State * L)
 		return 2;
 	}
 
-	value = -1;
-	if (sysutil_isinteger(L, ret, 1, &value))
-		fd = (int) value;
+	l_int = -1;
+	if (sysutil_isinteger(L, ret, 1, &l_int))
+		fd = (int) l_int;
 	if (fd < 0) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EBADF);
@@ -208,8 +208,8 @@ static int sysutil_accept(lua_State * L)
 	}
 
 	Flags = SOCK_CLOEXEC;
-	if (sysutil_isinteger(L, ret, 2, &value))
-		Flags = (int) value;
+	if (sysutil_isinteger(L, ret, 2, &l_int))
+		Flags = (int) l_int;
 
 	slt = sizeof(addr);
 	memset(addr, 0, sizeof(addr));
@@ -414,7 +414,7 @@ static int sysutil_dirname(lua_State * L)
 	len = 0;
 	ntop = lua_gettop(L);
 	fpath = sysutil_isstring(L, ntop, 1, &len);
-	if (sysutil_emptystr(fpath)) {
+	if (empty_str(fpath)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -606,7 +606,7 @@ static int sysutil_setname(lua_State * L)
 
 	ntop = lua_gettop(L);
 	tname = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(tname)) {
+	if (empty_str(tname)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -813,7 +813,7 @@ static int sysutil_tcpcheck(lua_State * L)
 
 	ntop = lua_gettop(L);
 	hostip = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(hostip)) {
+	if (empty_str(hostip)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -1052,7 +1052,7 @@ static int sysutil_mountpoint(lua_State * L)
 
 	ntop = lua_gettop(L);
 	fpath = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(fpath)) {
+	if (empty_str(fpath)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
@@ -1339,7 +1339,7 @@ static int sysutil_write(lua_State * L)
 			errno = EBADF;
 	} else {
 		filp = sysutil_isstring(L, ntop, 1, NULL);
-		if (sysutil_emptystr(filp)) {
+		if (empty_str(filp)) {
 			errno = EINVAL;
 		} else {
 			int oflags = O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC;
@@ -1577,7 +1577,7 @@ static int sysutil_signal(lua_State * L)
 	error = 0;
 	func = 0ul;
 	pfunc = sysutil_isstring(L, ntop, 2, NULL);
-	if (sysutil_emptystr(pfunc) == 0) {
+	if (empty_str(pfunc) == 0) {
 		char * endptr;
 		errno = 0;
 		endptr = NULL;
@@ -1702,7 +1702,7 @@ static int sysutil_readlink(lua_State * L)
 
 	ntop = lua_gettop(L);
 	fpath = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(fpath)) {
+	if (empty_str(fpath)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -1742,7 +1742,7 @@ static int sysutil_realpath(lua_State * L)
 
 	ntop = lua_gettop(L);
 	unreal = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(unreal)) {
+	if (empty_str(unreal)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
@@ -1881,7 +1881,7 @@ static int sysutil_mkdir(lua_State * L)
 
 	ntop = lua_gettop(L);
 	dirp = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(dirp)) {
+	if (empty_str(dirp)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -1916,7 +1916,7 @@ static int sysutil_stat(lua_State * L)
 
 	ntop = lua_gettop(L);
 	fpath = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(fpath)) {
+	if (empty_str(fpath)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -2126,7 +2126,7 @@ static int sysutil_glob(lua_State * L)
 
 	ntop = lua_gettop(L);
 	pattern = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(pattern)) {
+	if (empty_str(pattern)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -2352,7 +2352,7 @@ static int sysutil_chdir(lua_State * L)
 
 	ntop = lua_gettop(L);
 	dir = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(dir)) {
+	if (empty_str(dir)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
@@ -2408,7 +2408,7 @@ static int sysutil_checkip(lua_State * L)
 
 	ntop = lua_gettop(L);
 	strp = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(strp)) {
+	if (empty_str(strp)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
@@ -2429,7 +2429,7 @@ static int sysutil_checkmask(lua_State * L)
 
 	idx = lua_gettop(L);
 	strp = sysutil_isstring(L, idx, 1, NULL);
-	if (sysutil_emptystr(strp)) {
+	if (empty_str(strp)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -2507,7 +2507,7 @@ static int sysutil_symlink(lua_State * L)
 	ntop = lua_gettop(L);
 	src = sysutil_isstring(L, ntop, 1, NULL);
 	dst = sysutil_isstring(L, ntop, 2, NULL);
-	if (sysutil_emptystr(src) || sysutil_emptystr(dst)) {
+	if (empty_str(src) || empty_str(dst)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
@@ -2542,7 +2542,7 @@ static int sysutil_mkfifo(lua_State * L)
 
 	ntop = lua_gettop(L);
 	fpath = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(fpath)) {
+	if (empty_str(fpath)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -2600,7 +2600,7 @@ static int sysutil_chmod(lua_State * L)
 	} else if (lua_type(L, 1) == LUA_TSTRING) {
 		const char * filp;
 		filp = lua_tolstring(L, 1, NULL);
-		if (sysutil_emptystr(filp)) {
+		if (empty_str(filp)) {
 			lua_pushnil(L);
 			lua_pushinteger(L, EFAULT);
 			return 2;
@@ -2707,7 +2707,7 @@ static int sysutil_open(lua_State * L)
 
 	ntop = lua_gettop(L);
 	filp = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(filp)) {
+	if (empty_str(filp)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
@@ -2931,7 +2931,7 @@ static int sysutil_getenv(lua_State * L)
 
 	ntop = lua_gettop(L);
 	envp = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(envp)) {
+	if (empty_str(envp)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
@@ -2959,7 +2959,7 @@ static int sysutil_setenv(lua_State * L)
 
 	ntop = lua_gettop(L);
 	envp = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(envp)) {
+	if (empty_str(envp)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
@@ -3241,7 +3241,7 @@ static int sysutil_basename(lua_State * L)
 	len = 0;
 	ntop = lua_gettop(L);
 	fpath = sysutil_isstring(L, ntop, 1, &len);
-	if (len == 0 || sysutil_emptystr(fpath)) {
+	if (len == 0 || empty_str(fpath)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -3325,7 +3325,7 @@ static int sysutil_lockfile(lua_State * L)
 
 	ntop = lua_gettop(L);
 	filp = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(filp)) {
+	if (empty_str(filp)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -3648,7 +3648,7 @@ static int sysutil_connect(lua_State * L)
 
 	/* get the address as string */
 	paddr = sysutil_isstring(L, ret, 3, &addrlen);
-	if (addrlen == 0 || sysutil_emptystr(paddr))
+	if (addrlen == 0 || empty_str(paddr))
 		goto error;
 
 	l_int = -1;
@@ -3722,7 +3722,7 @@ error:
 
 static int sysutil_bind(lua_State * L)
 {
-	lua_Integer value;
+	lua_Integer l_int;
 	size_t addrlen;
 	const char * paddr;
 	int ret, fd, port, addr_f;
@@ -3738,12 +3738,12 @@ static int sysutil_bind(lua_State * L)
 		return 2;
 	}
 
-	value = -1;
+	l_int = -1;
 	/* get the socket file descriptor */
-	if (sysutil_isinteger(L, ret, 1, &value) == 0)
+	if (sysutil_isinteger(L, ret, 1, &l_int) == 0)
 		goto error;
 
-	fd = (int) value;
+	fd = (int) l_int;
 	/* check for the socket file descriptor */
 	if (fd < 0) {
 		lua_pushnil(L);
@@ -3751,11 +3751,11 @@ static int sysutil_bind(lua_State * L)
 		return 2;
 	}
 
-	value = 0;
+	l_int = 0;
 	/* get the address family type */
-	if (sysutil_isinteger(L, ret, 2, &value) == 0)
+	if (sysutil_isinteger(L, ret, 2, &l_int) == 0)
 		goto error;
-	addr_f = (int) value;
+	addr_f = (int) l_int;
 	if (addr_f != AF_INET &&
 		addr_f != AF_INET6 &&
 		addr_f != AF_NETLINK &&
@@ -3767,18 +3767,18 @@ static int sysutil_bind(lua_State * L)
 
 	/* get the address as string */
 	paddr = sysutil_isstring(L, ret, 3, &addrlen);
-	if (addrlen == 0 || sysutil_emptystr(paddr))
+	if (addrlen == 0 || empty_str(paddr))
 		goto error;
 
-	value = -1;
+	l_int = -1;
 	/* fetch the port number */
-	if (sysutil_isinteger(L, ret, 4, &value) == 0) {
+	if (sysutil_isinteger(L, ret, 4, &l_int) == 0) {
 error:
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
 	}
-	port = (int) value;
+	port = (int) l_int;
 	if ((addr_f != AF_NETLINK) && (port < 0 || port >= 65536)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, ERANGE);
@@ -4190,48 +4190,51 @@ error:
 
 static int sysutil_cgroup_create(lua_State *L)
 {
-	const char * grpnam;
-	const char * controllers;
-	int fd, ntop;
+	size_t clen;
+	int fd, ntop, ret;
 	char path[CGROUP_PATH_MAX];
-	int n, ret;
+	const char * grpnam, * controllers;
 
-	grpnam = controllers = NULL;
+	clen = 0;
 	ret = lua_checkstack(L, 2);
 	if (ret == 0)
 		return 0;
 
 	ntop = lua_gettop(L);
 	grpnam = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(grpnam)) {
-		errno = EINVAL;
+	if (empty_str(grpnam)) {
+		ret = EINVAL;
 		goto error;
 	}
-	controllers = sysutil_isstring(L, ntop, 2, NULL);
 
-	n = snprintf(path, sizeof(path),
-		CGROUP_ROOT "/%s", grpnam);
-	if (n < 0 || (size_t) n >= sizeof(path)) {
+	ret = snprintf(path, sizeof(path), CGROUP_ROOT "/%s", grpnam);
+	if (ret < 0 || ret >= (int) sizeof(path)) {
 		errno = ENAMETOOLONG;
 		goto error;
 	}
 
-	if (controllers && controllers[0] != '\0') {
-		fd = open(CGROUP_ROOT "/cgroup.subtree_control",
-			O_WRONLY | O_CLOEXEC);
-		if (fd < 0)
+	controllers = sysutil_isstring(L, ntop, 2, &clen);
+	if (controllers && clen > 0) {
+		fd = open(CGROUP_ROOT "/cgroup.subtree_control", O_WRONLY | O_CLOEXEC);
+		if (fd < 0) {
+			ret = errno;
 			goto error;
+		}
 
-		n = (int) strlen(controllers);
-		if (write(fd, controllers, (size_t) n) != n) {
+		errno = 0;
+		if (write(fd, controllers, clen) != (ssize_t) clen) {
+			ret = errno;
 			close(fd);
 			goto error;
 		}
 		close(fd);
 	}
 
-	if (mkdir(path, 0755) < 0 && errno != EEXIST)
+	errno = 0;
+	if (mkdir(path, 0755) < 0 && errno != EEXIST) {
+		ret = errno;
 		goto error;
+	}
 
 	fd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
 	lua_pushinteger(L, fd);
@@ -4239,75 +4242,87 @@ static int sysutil_cgroup_create(lua_State *L)
 
 error:
 	lua_pushnil(L);
-	lua_pushinteger(L, errno);
+	lua_pushinteger(L, ret);
 	return 2;
 }
 
 static int sysutil_cgroup_attach(lua_State *L)
 {
-	int ret, ntop;
-	lua_Integer value;
-	int cgfd, fd, ec;
+	ssize_t nr;
 	pid_t pid;
-	ssize_t n;
-	char pbuf[32];
+	char pbuf[64];
+	lua_Integer l_int;
+	int cgfd, fd, ret, ntop;
 	char rcgpath[CGROUP_PATH_MAX];
 
-	cgfd = -1;
-	pid = 0;
-	value = 0;
 	ret = lua_checkstack(L, 2);
 	if (ret == 0)
 		return 0;
 
+	l_int = -1;
 	ntop = lua_gettop(L);
-	if (sysutil_isinteger(L, ntop, 1, &value))
-		cgfd = (int) value;
-	if (sysutil_isinteger(L, ntop, 2, &value))
-		pid = (pid_t) value;
-	if (cgfd < 0 || pid <= 0) {
-		errno = EINVAL;
+	sysutil_isinteger(L, ntop, 1, &l_int);
+	cgfd = (int) l_int;
+	if (cgfd < 0) {
+		ret = EBADF;
 		goto error;
 	}
 
-	snprintf(pbuf, sizeof(pbuf), "/proc/%d/cgroup", (int) pid);
-	fd = open(pbuf, O_RDONLY | O_CLOEXEC);
-	if (fd < 0)
+	l_int = 0;
+	sysutil_isinteger(L, ntop, 2, &l_int);
+	pid = (pid_t) l_int;
+	if (pid <= 0) {
+		ret = EINVAL;
 		goto error;
-	n = read(fd, rcgpath, sizeof(rcgpath) - 1);
-	if (n < 0) {
-		ec = errno;
+	}
+
+	snprintf(pbuf, sizeof(pbuf), "/proc/%ld/cgroup", (long) pid);
+	fd = open(pbuf, O_RDONLY | O_CLOEXEC);
+	if (fd < 0) {
+		ret = errno;
+		goto error;
+	}
+
+	nr = read(fd, rcgpath, sizeof(rcgpath) - 1);
+	if (nr < 0) {
+		ret = errno;
 		close(fd);
-		errno = ec;
 		goto error;
 	}
 	close(fd);
-	rcgpath[n] = '\0';
+	rcgpath[nr] = '\0';
 
 	fd = openat(cgfd, "cgroup.procs", O_WRONLY | O_CLOEXEC);
-	if (fd < 0)
+	if (fd < 0) {
+		ret = errno;
 		goto error;
-	ret = snprintf(pbuf, sizeof(pbuf), "%d\n", (int) pid);
+	}
+
+	ret = snprintf(pbuf, sizeof(pbuf), "%ld\n", (long) pid);
 	if (ret < 0 || ret >= (int) sizeof(pbuf)) {
 		close(fd);
-		errno = ERANGE;
+		ret = ERANGE;
 		goto error;
 	}
 
-	n = write(fd, pbuf, (size_t) n);
-	ec = errno;
+	nr = write(fd, pbuf, (size_t) ret);
+	if (nr < 0) {
+		ret = errno;
+		close(fd);
+		goto error;
+	}
+
 	close(fd);
-
-	if (n != (ssize_t) strlen(pbuf)) {
-		errno = (n < 0) ? ec : EIO;
+	if (nr != (ssize_t) strlen(pbuf)) {
+		ret = EIO;
 		goto error;
 	}
+
 	lua_pushboolean(L, 1);
 	lua_pushstring(L, rcgpath);
 	return 2;
 
 error:
-	ret = errno; /* Note that `lua_pushnil(L)` might change `errno */
 	lua_pushnil(L);
 	lua_pushinteger(L, ret);
 	return 2;
@@ -4315,117 +4330,153 @@ error:
 
 static int sysutil_cgroup_detach(lua_State *L)
 {
-	int ret, ntop;
-	lua_Integer value;
 	pid_t pid;
-	int cgfd, fd, n;
-	char pbuf[32];
-	const char *rawcgrp, *p;
+	ssize_t nr;
 	size_t plen;
+	char pbuf[64];
+	lua_Integer l_int;
+	int cgfd, fd, ret, ntop;
+	const char * rawcgrp, * p;
 	char cgrpath[CGROUP_PATH_MAX];
 
-	cgfd = -1;
-	pid = 0;
-	value = 0;
-	rawcgrp = NULL;
 	ret = lua_checkstack(L, 2);
 	if (ret == 0)
 		return 0;
 
+	l_int = -1;
 	ntop = lua_gettop(L);
-	if (sysutil_isinteger(L, ntop, 1, &value))
-		cgfd = (int) value;
-	if (sysutil_isinteger(L, ntop, 2, &value))
-		pid = (pid_t) value;
+	sysutil_isinteger(L, ntop, 1, &l_int);
+	cgfd = (int) l_int;
+	if (cgfd < 0) {
+		ret = EBADF;
+		goto error;
+	}
+
+	l_int = 0;
+	sysutil_isinteger(L, ntop, 2, &l_int);
+	pid = (pid_t) l_int;
+	if (pid <= 0) {
+		ret = EINVAL;
+		goto error;
+	}
+
 	rawcgrp = sysutil_isstring(L, ntop, 3, NULL);
-	if (cgfd < 0 || pid <= 0 || rawcgrp == NULL) {
-		errno = EINVAL;
+	if (empty_str(rawcgrp)) {
+		ret = EINVAL;
 		goto error;
 	}
 
 	p = strstr(rawcgrp, "0::");
 	if (p == NULL) {
-		errno = EINVAL;
+		ret = EINVAL;
 		goto error;
 	}
+
 	p += 3;
 	if (*p != '/') {
-		errno = EINVAL;
+		ret = EINVAL;
 		goto error;
 	}
 	plen = strcspn(p, "\r\n");
 
-	n = snprintf(cgrpath, sizeof(cgrpath),
-		     CGROUP_ROOT "%.*s/cgroup.procs", (int)plen, p);
-	if (n < 0 || (size_t)n >= sizeof(cgrpath)) {
-		errno = ENAMETOOLONG;
+	ret = snprintf(cgrpath, sizeof(cgrpath),
+		CGROUP_ROOT "%.*s/cgroup.procs", (int) plen, p);
+	if (ret < 0 || ret >= (int) sizeof(cgrpath)) {
+		ret = ENAMETOOLONG;
 		goto error;
 	}
 
 	fd = open(cgrpath, O_WRONLY | O_CLOEXEC);
-	if (fd < 0)
+	if (fd < 0) {
+		ret = errno;
 		goto error;
-	n = snprintf(pbuf, sizeof(pbuf), "%d\n", (int) pid);
-	if (n < 0 || (size_t) n >= sizeof(pbuf)) {
+	}
+
+	ret = snprintf(pbuf, sizeof(pbuf), "%ld\n", (long) pid);
+	if (ret < 0 || ret >= (int) sizeof(pbuf)) {
+		close(fd);
+		ret = ENAMETOOLONG;
+		goto error;
+	}
+
+	nr = (int) write(fd, pbuf, (size_t) ret);
+	if (nr < 0) {
+		ret = errno;
 		close(fd);
 		goto error;
 	}
-	n = (int) write(fd, pbuf, (size_t) n);
 	close(fd);
-	if ((size_t) n != strlen(pbuf)) {
-		errno = (n < 0) ? errno : EIO;
+
+	if (nr != (ssize_t) ret) {
+		ret = EIO;
 		goto error;
 	}
-	lua_pushboolean(L, 1);
+
+	lua_pushinteger(L, (lua_Integer) nr);
 	return 1;
 
 error:
 	lua_pushnil(L);
-	lua_pushinteger(L, errno);
+	lua_pushinteger(L, ret);
 	return 2;
 }
 
 static int sysutil_cgroup_set(lua_State *L)
 {
-	int ret, ntop;
-	lua_Integer value;
-	int cgfd, fd;
-	const char * attr;
-	const char * valstr;
-	ssize_t n;
+	ssize_t nr;
+	size_t dlen;
+	lua_Integer l_int;
+	int cgfd, fd, ret, ntop;
+	const char * attr, * valstr;
 
+	dlen = 0;
 	ret = lua_checkstack(L, 2);
 	if (ret == 0)
 		return 0;
-	attr = valstr = NULL;
-	value = 0;
-	cgfd = -1;
 
+	l_int = -1;
 	ntop = lua_gettop(L);
-	if (sysutil_isinteger(L, ntop, 1, &value))
-		cgfd = (int) value;
+	sysutil_isinteger(L, ntop, 1, &l_int);
+	cgfd = (int) l_int;
+	if (cgfd < 0) {
+		ret = EBADF;
+		goto error;
+	}
+
 	attr = sysutil_isstring(L, ntop, 2, NULL);
-	valstr = sysutil_isstring(L, ntop, 3, NULL);
-	if (cgfd < 0 || sysutil_emptystr(attr) || sysutil_emptystr(valstr)) {
-		errno = EINVAL;
+	if (empty_str(attr)) {
+		ret = ENOENT;
+		goto error;
+	}
+
+	valstr = sysutil_isstring(L, ntop, 3, &dlen);
+	if (dlen == 0 || empty_str(valstr)) {
+		ret = EINVAL;
 		goto error;
 	}
 
 	fd = openat(cgfd, attr, O_WRONLY | O_CLOEXEC);
-	if (fd < 0)
-		goto error;
-	n = write(fd, valstr, strlen(valstr));
-	close(fd);
-
-	if ((unsigned long) n != strlen(valstr)) {
-		errno = (n < 0) ? errno : EIO;
+	if (fd < 0) {
+		ret = errno;
 		goto error;
 	}
-	lua_pushboolean(L, 1);
+
+	nr = write(fd, valstr, dlen);
+	if (nr < 0) {
+		ret = errno;
+		close(fd);
+		goto error;
+	}
+	close(fd);
+
+	if (nr != (ssize_t) dlen) {
+		ret = EIO;
+		goto error;
+	}
+	lua_pushinteger(L, (lua_Integer) nr);
 	return 1;
 
 error:
-	ret = errno; /* Note that, `lua_pushnil(L)` might change `errno` */
 	lua_pushnil(L);
 	lua_pushinteger(L, ret);
 	return 2;
@@ -4433,51 +4484,55 @@ error:
 
 static int sysutil_cgroup_get(lua_State *L)
 {
-	int ret, ntop;
-	lua_Integer value;
-	int cgfd, fd;
-	const char *attr;
+	size_t nl;
+	ssize_t nr;
 	char buf[256];
-	ssize_t n;
+	lua_Integer l_int;
+	const char * attr;
+	int cgfd, fd, ret, ntop;
 
 	ret = lua_checkstack(L, 2);
 	if (ret == 0)
 		return 0;
-	attr = NULL;
-	cgfd = -1;
 
+	l_int = -1;
 	ntop = lua_gettop(L);
-	if (sysutil_isinteger(L, ntop, 1, &value) == 0) {
-		errno = EINVAL;
-		goto error;
-	}
-	cgfd = (int) value;
+	sysutil_isinteger(L, ntop, 1, &l_int);
+	cgfd = (int) l_int;
 	if (cgfd < 0) {
-		errno = EINVAL;
+		ret = EBADF;
 		goto error;
 	}
+
 	attr = sysutil_isstring(L, ntop, 2, NULL);
-	if (sysutil_emptystr(attr)) {
-		errno = EINVAL;
+	if (empty_str(attr)) {
+		ret = EINVAL;
 		goto error;
 	}
 
 	fd = openat(cgfd, attr, O_RDONLY | O_CLOEXEC);
-	if (fd < 0)
+	if (fd < 0) {
+		ret = errno;
 		goto error;
-	n = read(fd, buf, sizeof(buf) - 1);
+	}
+
+	nr = read(fd, buf, sizeof(buf) - 1);
+	if (nr < 0) {
+		ret = errno;
+		close(fd);
+		goto error;
+	}
 	close(fd);
+	buf[nr] = '\0';
 
-	if (n < 0)
-		goto error;
-	buf[n] = '\0';
-	n = (int) strcspn(buf, "\n");
-
-	lua_pushlstring(L, buf, (size_t) n);
+	nl = strcspn(buf, "\n");
+	if (nl > 0 && nl <= (size_t) nr)
+		lua_pushlstring(L, buf, nl);
+	else
+		lua_pushlstring(L, buf, (size_t) nr);
 	return 1;
 
 error:
-	ret = errno;
 	lua_pushnil(L);
 	lua_pushinteger(L, ret);
 	return 2;
@@ -4485,51 +4540,53 @@ error:
 
 static int sysutil_cgroup_destroy(lua_State *L)
 {
-	int ret, ntop;
-	lua_Integer value;
-	int cgfd;
-	char link[64];
-	char path[CGROUP_PATH_MAX];
-	ssize_t n;
+	ssize_t nr;
+	lua_Integer l_int;
+	int cgfd, ret, ntop;
+	char link[64], path[CGROUP_PATH_MAX];
 
-	value = 0;
-	cgfd = -1;
 	ret = lua_checkstack(L, 2);
 	if (ret == 0)
 		return 0;
 
+	l_int = -1;
 	ntop = lua_gettop(L);
-	if (sysutil_isinteger(L, ntop, 1, &value))
-		cgfd = (int) value;
+	sysutil_isinteger(L, ntop, 1, &l_int);
+	cgfd = (int) l_int;
 	if (cgfd < 0) {
-		errno = EINVAL;
+		ret = EBADF;
 		goto error;
 	}
 
-	n = snprintf(link, sizeof(link), "/proc/self/fd/%d", cgfd);
-	if (n < 0 || (size_t) n >= sizeof(link)) {
+	ret = snprintf(link, sizeof(link), "/proc/self/fd/%d", cgfd);
+	if (ret < 0 || ret >= (int) sizeof(link)) {
 		close(cgfd);
-		errno = ENAMETOOLONG;
+		ret = ENAMETOOLONG;
 		goto error;
 	}
 
-	n = readlink(link, path, sizeof(path) - 1);
-	if (n < 0) {
+	nr = readlink(link, path, sizeof(path) - 1);
+	if (nr < 0) {
+		ret = errno;
 		close(cgfd);
 		goto error;
 	}
-	path[n] = '\0';
-
 	close(cgfd);
-	if (rmdir(path) < 0)
-		goto error;
+	if (nr >= sizeof(path))
+		nr = sizeof(path) - 1;
+	path[nr] = '\0';
 
-	lua_pushboolean(L, 1);
+	ret = rmdir(path);
+	if (ret < 0) {
+		ret = errno;
+		goto error;
+	}
+	lua_pushinteger(L, ret);
 	return 1;
 
 error:
 	lua_pushnil(L);
-	lua_pushinteger(L, errno);
+	lua_pushinteger(L, ret);
 	return 2;
 }
 
@@ -4540,6 +4597,12 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "bind",           sysutil_bind },
 	{ "bindto",         sysutil_bindto },
 	{ "call",           sysutil_call },
+	{ "cgroup_attach",  sysutil_cgroup_attach },
+	{ "cgroup_create",  sysutil_cgroup_create },
+	{ "cgroup_destroy", sysutil_cgroup_destroy },
+	{ "cgroup_detach",  sysutil_cgroup_detach },
+	{ "cgroup_get",     sysutil_cgroup_get },
+	{ "cgroup_set",     sysutil_cgroup_set },
 	{ "chdir",          sysutil_chdir },
 	{ "checkip",        sysutil_checkip },
 	{ "checkmask",      sysutil_checkmask },
@@ -4554,11 +4617,11 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "getcwd",         sysutil_getcwd },
 	{ "getenv",         sysutil_getenv },
 	{ "getid",          sysutil_getid },       /* calls pthread_self() */
+	{ "getpeername",    sysutil_getpeername },
 	{ "getpid",         sysutil_getpid },
 	{ "getppid",        sysutil_getppid },
-	{ "getsockname",    sysutil_getsockname },
-	{ "getpeername",    sysutil_getpeername },
 	{ "getrlimit",      sysutil_getrlimit },
+	{ "getsockname",    sysutil_getsockname },
 	{ "getsockopt",     sysutil_getsockopt },
 	{ "glob",           sysutil_glob },
 	{ "inotify",        sysutil_inotify },
@@ -4606,12 +4669,6 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "waitpid",        sysutil_waitpid },
 	{ "write",          sysutil_write },
 	{ "zipstdio",       sysutil_zipstdio },
-	{ "cgroup_create",  sysutil_cgroup_create },
-	{ "cgroup_attach",  sysutil_cgroup_attach },
-	{ "cgroup_detach",  sysutil_cgroup_detach },
-	{ "cgroup_set",     sysutil_cgroup_set },
-	{ "cgroup_get",     sysutil_cgroup_get },
-	{ "cgroup_destroy", sysutil_cgroup_destroy },
 #if LUA_VERSION_NUM <= 501
 	{ placeholder,      NULL },
 	{ placeholder,      NULL },
@@ -4641,9 +4698,9 @@ int luaopen_sysutil(lua_State * L)
 {
 #if LUA_VERSION_NUM >= 502
 	/* Expanded from macro `luaL_newlib. */
-	/* 90: reserve extra slots from following constants: */
+	/* 95: reserve extra slots from following constants: */
 	luaL_checkversion(L);
-	lua_createtable(L, 0, 90);
+	lua_createtable(L, 0, 95);
 	luaL_setfuncs(L, sysutil_regs, 0);
 #else
 	luaL_register(L, "sysutil", sysutil_regs);
