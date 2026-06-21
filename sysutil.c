@@ -1220,8 +1220,12 @@ static int sysutil_read(lua_State * L)
 		flen = (size_t) luai;
 	} else if (fpath) {
 		struct stat fst;
-		if (fstat(fd, &fst) == 0)
+		if (fstat(fd, &fst) == 0) {
 			flen = (size_t) fst.st_size;
+			/* should not read zero length of data */
+			if (flen == 0)
+				flen = APPUTIL_BUFSIZE;
+		}
 	}
 
 	luai = 0;
@@ -1230,10 +1234,6 @@ static int sysutil_read(lua_State * L)
 		maxlen = (size_t) luai;
 	if (flen > maxlen)
 		flen = maxlen;
-
-	/* should not read zero length of data */
-	if (flen == 0)
-		flen = APPUTIL_BUFSIZE;
 
 	fild = (unsigned char *) malloc(flen);
 	if (fild == NULL) {
@@ -1339,14 +1339,14 @@ static int sysutil_write(lua_State * L)
 			errno = EBADF;
 	} else {
 		filp = sysutil_isstring(L, ntop, 1, NULL);
-		if (!sysutil_emptystr(filp)) {
+		if (sysutil_emptystr(filp)) {
+			errno = EINVAL;
+		} else {
 			int oflags = O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC;
 			luai = 0;
 			if (sysutil_isinteger(L, ntop, 3, &luai))
 				oflags = (int) luai;
 			fd = open(filp, oflags, 0644);
-		} else {
-			errno = EINVAL;
 		}
 	}
 
@@ -1462,6 +1462,7 @@ static int sysutil_sha256(lua_State * L)
 	ntop = lua_gettop(L);
 	if (ntop >= 2 && lua_toboolean(L, 2))
 		isfile = 1;
+
 	filp = sysutil_isstring(L, ntop, 1, &flen);
 	if (isfile && (filp == NULL || flen == 0)) {
 		lua_pushnil(L);
@@ -1507,8 +1508,6 @@ static int sysutil_sha256(lua_State * L)
 			if (rl1 == 0)
 				break;
 			zsha256_update(&sha256, bufp, (unsigned int) rl1);
-			if (rl1 != (ssize_t) rsize)
-				break;
 		}
 
 		close(fd);
@@ -1539,10 +1538,10 @@ static int sysutil_sha256(lua_State * L)
 
 static int sysutil_signal(lua_State * L)
 {
-	int signo, ntop, error;
 	lua_Integer luai;
 	const char * pfunc;
 	unsigned long func;
+	int signo, ntop, error;
 
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
@@ -1578,7 +1577,7 @@ static int sysutil_signal(lua_State * L)
 	error = 0;
 	func = 0ul;
 	pfunc = sysutil_isstring(L, ntop, 2, NULL);
-	if (!sysutil_emptystr(pfunc)) {
+	if (sysutil_emptystr(pfunc) == 0) {
 		char * endptr;
 		errno = 0;
 		endptr = NULL;
@@ -1870,13 +1869,13 @@ static int sysutil_rmdir(lua_State * L)
 
 static int sysutil_mkdir(lua_State * L)
 {
-	mode_t dirm;
+	mode_t mode;
 	int ret, ntop;
 	lua_Integer luai;
 	const char * dirp;
 
 	dirp = NULL;
-	dirm = 0755;
+	mode = 0755;
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 
@@ -1890,9 +1889,9 @@ static int sysutil_mkdir(lua_State * L)
 
 	luai = 0;
 	if (sysutil_isinteger(L, ntop, 2, &luai))
-		dirm = (mode_t) luai;
+		mode = (mode_t) luai;
 
-	ret = mkdir(dirp, dirm);
+	ret = mkdir(dirp, mode);
 	if (ret < 0) {
 		int error = errno;
 		lua_pushnil(L);
@@ -2502,7 +2501,6 @@ static int sysutil_symlink(lua_State * L)
 	const char * src;
 	const char * dst;
 
-	error = 0;
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 
@@ -2532,19 +2530,19 @@ static int sysutil_symlink(lua_State * L)
 
 static int sysutil_mkfifo(lua_State * L)
 {
-	mode_t fifom;
+	mode_t mode;
 	int ret, ntop;
 	lua_Integer luai;
-	const char * fifop;
+	const char * fpath;
 
-	fifop = NULL;
-	fifom = 0755;
+	fpath = NULL;
+	mode = 0755;
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 
 	ntop = lua_gettop(L);
-	fifop = sysutil_isstring(L, ntop, 1, NULL);
-	if (sysutil_emptystr(fifop)) {
+	fpath = sysutil_isstring(L, ntop, 1, NULL);
+	if (sysutil_emptystr(fpath)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -2552,9 +2550,9 @@ static int sysutil_mkfifo(lua_State * L)
 
 	luai = 0;
 	if (sysutil_isinteger(L, ntop, 2, &luai))
-		fifom = (mode_t) luai;
+		mode = (mode_t) luai;
 
-	ret = mkfifo(fifop, fifom);
+	ret = mkfifo(fpath, mode);
 	if (ret < 0) {
 		int error;
 		error = errno;
@@ -2695,20 +2693,18 @@ static int sysutil_cloexec(lua_State * L)
 
 static int sysutil_open(lua_State * L)
 {
-	mode_t film;
+	mode_t mode;
 	lua_Integer luai;
 	const char * filp;
 	int fd, ntop, flags;
 
 	fd = -1;
-	filp = NULL;
-	film = (mode_t) 0644;
+	mode = (mode_t) 0644;
 	flags = O_RDONLY | O_CLOEXEC;
 
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 
-	luai = 0;
 	ntop = lua_gettop(L);
 	filp = sysutil_isstring(L, ntop, 1, NULL);
 	if (sysutil_emptystr(filp)) {
@@ -2717,12 +2713,13 @@ static int sysutil_open(lua_State * L)
 		return 2;
 	}
 
+	luai = 0;
 	if (sysutil_isinteger(L, ntop, 2, &luai))
 		flags = (int) luai;
 	if (sysutil_isinteger(L, ntop, 3, &luai))
-		film = (mode_t) luai;
+		mode = (mode_t) luai;
 
-	fd = open(filp, flags, film);
+	fd = open(filp, flags, mode);
 	if (fd == -1) {
 		fd = errno;
 		lua_pushnil(L);
@@ -2953,12 +2950,10 @@ static int sysutil_getenv(lua_State * L)
 
 static int sysutil_setenv(lua_State * L)
 {
-	int rval, ntop;
+	int ret, ntop;
 	const char * envp;
 	const char * valp;
 
-	rval = 0;
-	envp = valp = NULL;
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 
@@ -2976,19 +2971,19 @@ static int sysutil_setenv(lua_State * L)
 		if (ntop >= 3)
 			override = lua_toboolean(L, 3);
 		errno = 0;
-		rval = setenv(envp, valp, override);
+		ret = setenv(envp, valp, override);
 	} else {
 		errno = 0;
-		rval = unsetenv(envp);
+		ret = unsetenv(envp);
 	}
 
-	if (rval == -1) {
-		rval = errno;
+	if (ret == -1) {
+		ret = errno;
 		lua_pushnil(L);
-		lua_pushinteger(L, rval);
+		lua_pushinteger(L, ret);
 		return 2;
 	}
-	lua_pushinteger(L, rval);
+	lua_pushinteger(L, ret);
 	return 1;
 }
 
@@ -3246,7 +3241,7 @@ static int sysutil_basename(lua_State * L)
 	len = 0;
 	ntop = lua_gettop(L);
 	fpath = sysutil_isstring(L, ntop, 1, &len);
-	if (fpath == NULL || len == 0) {
+	if (len == 0 || sysutil_emptystr(fpath)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
 		return 2;
@@ -3318,6 +3313,7 @@ static int sysutil_lockfile(lua_State * L)
 {
 	char * fptr;
 	size_t msglen;
+	lua_Integer l_int;
 	struct timespec spec;
 	int fd, timeout, ntop;
 	const char * filp, * msgptr;
@@ -3335,10 +3331,11 @@ static int sysutil_lockfile(lua_State * L)
 		return 2;
 	}
 
-	msgptr = sysutil_isstring(L, ntop, 2, &msglen);
-	if (ntop >= 3 && lua_type(L, 3) == LUA_TNUMBER)
-		timeout = (int) lua_tonumber(L, 3);
+	l_int = -1;
+	if (sysutil_isinteger(L, ntop, 3, &l_int))
+		timeout = (int) l_int;
 
+	msgptr = sysutil_isstring(L, ntop, 2, &msglen);
 	if (msgptr && msglen > 0) {
 		fptr = (char *) malloc(msglen + 1);
 		if (fptr == NULL) {
@@ -3651,7 +3648,7 @@ static int sysutil_connect(lua_State * L)
 
 	/* get the address as string */
 	paddr = sysutil_isstring(L, ret, 3, &addrlen);
-	if (sysutil_emptystr(paddr))
+	if (addrlen == 0 || sysutil_emptystr(paddr))
 		goto error;
 
 	l_int = -1;
@@ -3770,7 +3767,7 @@ static int sysutil_bind(lua_State * L)
 
 	/* get the address as string */
 	paddr = sysutil_isstring(L, ret, 3, &addrlen);
-	if (sysutil_emptystr(paddr))
+	if (addrlen == 0 || sysutil_emptystr(paddr))
 		goto error;
 
 	value = -1;
@@ -3892,7 +3889,6 @@ static int sysutil_socket(lua_State * L)
 	lua_Integer l_int;
 	int domain, type, proto;
 
-	ret = EINVAL;
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 	ntop = lua_gettop(L);
@@ -3903,6 +3899,7 @@ static int sysutil_socket(lua_State * L)
 	}
 
 	l_int = 0;
+	ret = EINVAL;
 	if (sysutil_isinteger(L, ntop, 1, &l_int) == 0)
 		goto error;
 	domain = (int) l_int;
@@ -3934,7 +3931,7 @@ static int sysutil_recvfrom(lua_State * L)
 	ssize_t rval;
 	socklen_t slt;
 	size_t buflen;
-	lua_Integer value;
+	lua_Integer l_int;
 	char * buf, addr[128];
 	int fd, Flags, ntop;
 
@@ -3947,32 +3944,31 @@ static int sysutil_recvfrom(lua_State * L)
 		return 2;
 	}
 
-	value = -1;
-	if (sysutil_isinteger(L, ntop, 1, &value) == 0)
-		goto error;
-	fd = (int) value;
+	l_int = -1;
+	sysutil_isinteger(L, ntop, 1, &l_int);
+	fd = (int) l_int;
 	if (fd < 0) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EBADF);
 		return 2;
 	}
 
-	value = 0;
-	if (sysutil_isinteger(L, ntop, 2, &value) == 0)
+	l_int = 0;
+	if (sysutil_isinteger(L, ntop, 2, &l_int) == 0)
 		goto error;
-	if (value <= 0 || value > 262144)
+	if (l_int <= 0 || l_int > 262144)
 		buflen = 8192;
 	else
-		buflen = (size_t) value;
+		buflen = (size_t) l_int;
 
-	value = 0;
-	if (sysutil_isinteger(L, ntop, 3, &value) == 0) {
+	l_int = 0;
+	if (sysutil_isinteger(L, ntop, 3, &l_int) == 0) {
 error:
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
 	}
-	Flags = (int) value;
+	Flags = (int) l_int;
 
 	buf = (char *) malloc(buflen);
 	if (buf == NULL) {
@@ -4052,11 +4048,13 @@ static int sysutil_getpeername(lua_State * L)
 		return 2;
 	}
 
+	l_int = -1;
 	if (sysutil_isinteger(L, ntop, 1, &l_int) == 0) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
 	}
+
 	fd = (int) l_int;
 	if (fd < 0) {
 		lua_pushnil(L);
@@ -4083,14 +4081,14 @@ static int sysutil_sendto(lua_State * L)
 	size_t len, addrlen;
 	lua_Integer l_int;
 	int ntop, fd, port, Flags;
-	const char * pd, * addrp;
+	const char * rawd, * addrp;
 	struct sockaddr_in  v4addr;
 	struct sockaddr_in6 v6addr;
 	struct sockaddr_un  unaddr;
 
 	len = 0;
 	port = 0;
-	pd = NULL;
+	rawd = NULL;
 	addrlen = 0;
 	addrp = NULL;
 	ntop = lua_gettop(L);
@@ -4110,8 +4108,8 @@ static int sysutil_sendto(lua_State * L)
 		return 2;
 	}
 
-	pd = sysutil_isstring(L, ntop, 2, &len);
-	if (pd == NULL || len == 0) {
+	rawd = sysutil_isstring(L, ntop, 2, &len);
+	if (rawd == NULL || len == 0) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
@@ -4134,7 +4132,7 @@ error:
 	}
 
 	if (addrp == NULL || addrlen == 0) {
-		rval = send(fd, pd, len, Flags);
+		rval = send(fd, rawd, len, Flags);
 		if (rval < 0) {
 			fd = errno;
 			lua_pushnil(L);
@@ -4149,7 +4147,7 @@ error:
 	if (inet_pton(AF_INET, addrp, &v4addr.sin_addr) == 1) {
 		v4addr.sin_family = AF_INET;
 		v4addr.sin_port = htons((unsigned short) port);
-		rval = sendto(fd, pd, len, Flags, (struct sockaddr *) &v4addr, sizeof(v4addr));
+		rval = sendto(fd, rawd, len, Flags, (struct sockaddr *) &v4addr, sizeof(v4addr));
 		if (rval < 0) {
 			fd = errno;
 			lua_pushnil(L);
@@ -4164,7 +4162,7 @@ error:
 	if (inet_pton(AF_INET6, addrp, &v6addr.sin6_addr) == 1) {
 		v6addr.sin6_family = AF_INET6;
 		v6addr.sin6_port = htons((unsigned short) port);
-		rval = sendto(fd, pd, len, Flags, (struct sockaddr *) &v6addr, sizeof(v6addr));
+		rval = sendto(fd, rawd, len, Flags, (struct sockaddr *) &v6addr, sizeof(v6addr));
 		if (rval < 0) {
 			fd = errno;
 			lua_pushnil(L);
@@ -4179,7 +4177,7 @@ error:
 	unaddr.sun_family = AF_UNIX;
 	memcpy(unaddr.sun_path, addrp,
 		addrlen >= sizeof(unaddr.sun_path) ? sizeof(unaddr.sun_path) - 1 : addrlen);
-	rval = sendto(fd, pd, len, Flags, (struct sockaddr *) &unaddr, sizeof(unaddr));
+	rval = sendto(fd, rawd, len, Flags, (struct sockaddr *) &unaddr, sizeof(unaddr));
 	if (rval < 0) {
 		fd = errno;
 		lua_pushnil(L);
