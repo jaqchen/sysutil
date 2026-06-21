@@ -23,4 +23,7 @@
 #define APPUTIL_ATTR __attribute__((visibility("hidden")))
 #endif
 
+#define CGROUP_ROOT		 "/sys/fs/cgroup"
+#define CGROUP_PATH_MAX	 512
+
 #endif
