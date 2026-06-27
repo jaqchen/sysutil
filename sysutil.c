@@ -44,15 +44,15 @@
 #endif
 #include <sys/resource.h>
 #include <endian.h>
+#include <net/if.h>
+#include <glob.h> /* request for glob function */
 
 #include <lua.h>
 #include <lauxlib.h>
 #include "apputil.h"
 #include "zsha256_util.h"
 #include "openwrt_base64.h"
-#include <net/if.h>
 
-#include <glob.h> /* request for glob function */
 #ifndef IFNAMSIZ
   #define IFNAMSIZ 16
 #endif

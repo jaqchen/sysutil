@@ -19,7 +19,7 @@ STRIP     ?= strip
 CFLAGS    := -Wall -Wno-unused-result -fPIC -D_GNU_SOURCE -ggdb -O2
 CFLAGS    += -fno-omit-frame-pointer -I. $(if $(LUA_INCDIR),-I$(LUA_INCDIR)) $(EXTRA_CFLAGS)
 LDFLAGS   := -lpthread
-TARGETS    = apputil.o base64.o sysutil.so sysutil.o zsha256_util.o zsha256_test.o zsha256
+TARGETS    = apputil.o base64.o sysutil.so sysutil.o zsha256_util.o zsha256_test.o zsha256 syscon.so
 
 .PHONY: all clean
 all: $(TARGETS)
@@ -27,6 +27,9 @@ all: $(TARGETS)
 sysutil.so: sysutil.o apputil.o zsha256_util.o base64.o
 	$(CC) -shared -o $@ $^ -lpthread
 	$(STRIP) -s $@
+
+syscon.so: syscon.c
+	$(CC) $(CFLAGS) -shared -o $@ $^
 
 zsha256: zsha256_test.o zsha256_util.o apputil.o
 	$(CC) -o $@ $^ $(LDFLAGS)
