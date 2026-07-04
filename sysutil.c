@@ -29,14 +29,15 @@
 #include <unistd.h>
 #include <signal.h>
 
-#include <arpa/inet.h>
-#include <netdb.h>
 #include <pthread.h>
 #include <sys/prctl.h>
 #include <sys/file.h>
 #include <sys/inotify.h>
 #include <termios.h>
 #include <libgen.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/tcp.h>
 #include <linux/netlink.h>
 
 #ifdef SYSUTIL_SYSCALL
@@ -56,6 +57,11 @@
 #ifndef IFNAMSIZ
   #define IFNAMSIZ 16
 #endif
+#define SYSCON_ADD(__lua, __topn, __sc_val) \
+	do { \
+		lua_pushinteger(__lua, (lua_Integer) __sc_val); \
+		lua_setfield(__lua, __topn, # __sc_val); \
+	} while (0)
 
 #if LUA_VERSION_NUM <= 501
 static const char placeholder[] = "\x00";
@@ -4379,6 +4385,286 @@ static const luaL_Reg sysutil_regs[] = {
 	{ placeholder,      NULL },
 	{ placeholder,      NULL },
 	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
 #endif
 	{ NULL,             NULL },
 };
@@ -4389,56 +4675,317 @@ int luaopen_sysutil(lua_State * L)
 	/* Expanded from macro `luaL_newlib. */
 	/* 95: reserve extra slots from following constants: */
 	luaL_checkversion(L);
-	lua_createtable(L, 0, 95);
+	lua_createtable(L, 0, 384);
 	luaL_setfuncs(L, sysutil_regs, 0);
 #else
 	luaL_register(L, "sysutil", sysutil_regs);
 #endif
 
+	const int ntop = lua_gettop(L);
 	lua_pushinteger(L, APPUTIL_OPTION_NULLIO);
-	lua_setfield(L, -2, "OPT_NULLIO");
+	lua_setfield(L, ntop, "OPT_NULLIO");
 
 	lua_pushinteger(L, APPUTIL_OPTION_INPUT);
-	lua_setfield(L, -2, "OPT_INPUT");
+	lua_setfield(L, ntop, "OPT_INPUT");
 
 	lua_pushinteger(L, APPUTIL_OPTION_OUTPUT);
-	lua_setfield(L, -2, "OPT_OUTPUT");
+	lua_setfield(L, ntop, "OPT_OUTPUT");
 
 	lua_pushinteger(L, APPUTIL_OPTION_OUTALL);
-	lua_setfield(L, -2, "OPT_OUTALL");
+	lua_setfield(L, ntop, "OPT_OUTALL");
 
 	lua_pushinteger(L, APPUTIL_OPTION_NOWAIT);
-	lua_setfield(L, -2, "OPT_NOWAIT");
+	lua_setfield(L, ntop, "OPT_NOWAIT");
 
 	lua_pushinteger(L, APPUTIL_OPTION_CLOSER);
-	lua_setfield(L, -2, "OPT_CLOSER");
+	lua_setfield(L, ntop, "OPT_CLOSER");
 
 	lua_pushinteger(L, APPUTIL_OPTION_LOWPRI);
-	lua_setfield(L, -2, "OPT_LOWPRI");
+	lua_setfield(L, ntop, "OPT_LOWPRI");
 
 	lua_pushinteger(L, APPUTIL_OPTION_EXEC);
-	lua_setfield(L, -2, "OPT_EXEC");
+	lua_setfield(L, ntop, "OPT_EXEC");
 
 	lua_pushinteger(L, APPUTIL_OPTION_SYMLINK);
-	lua_setfield(L, -2, "OPT_SYMLINK");
+	lua_setfield(L, ntop, "OPT_SYMLINK");
 
 	lua_pushinteger(L, APPUTIL_OPTION_RSTRIP);
-	lua_setfield(L, -2, "OPT_RSTRIP");
+	lua_setfield(L, ntop, "OPT_RSTRIP");
 
-	lua_pushinteger(L, ETIMEDOUT);
-	lua_setfield(L, -2, "ETIMEDOUT");
+	/* whence for `lseek(2) system call */
+	SYSCON_ADD(L, ntop, SEEK_SET);
+	SYSCON_ADD(L, ntop, SEEK_CUR);
+	SYSCON_ADD(L, ntop, SEEK_END);
 
-	lua_pushinteger(L, ECONNREFUSED);
-	lua_setfield(L, -2, "ECONNREFUSED");
+	/* File open flags definitions */
+	SYSCON_ADD(L, ntop, O_RDONLY);
+	SYSCON_ADD(L, ntop, O_RDWR);
+	SYSCON_ADD(L, ntop, O_WRONLY);
+	SYSCON_ADD(L, ntop, O_APPEND);
+	SYSCON_ADD(L, ntop, O_ASYNC);
+	SYSCON_ADD(L, ntop, O_CLOEXEC);
+	SYSCON_ADD(L, ntop, O_CREAT);
+	SYSCON_ADD(L, ntop, O_DIRECT);
+	SYSCON_ADD(L, ntop, O_DIRECTORY);
+	SYSCON_ADD(L, ntop, O_DSYNC);
+	SYSCON_ADD(L, ntop, O_EXCL);
+	SYSCON_ADD(L, ntop, O_LARGEFILE);
+	SYSCON_ADD(L, ntop, O_NOATIME);
+	SYSCON_ADD(L, ntop, O_NOCTTY);
+	SYSCON_ADD(L, ntop, O_NOFOLLOW);
+	SYSCON_ADD(L, ntop, O_NONBLOCK);
+	SYSCON_ADD(L, ntop, O_PATH);
+	SYSCON_ADD(L, ntop, O_SYNC);
+	SYSCON_ADD(L, ntop, O_TMPFILE);
+	SYSCON_ADD(L, ntop, O_TRUNC);
 
-	lua_pushinteger(L, SEEK_SET);
-	lua_setfield(L, -2, "SEEK_SET");
+	/* socket related definitions */
+	SYSCON_ADD(L, ntop, AF_INET);
+	SYSCON_ADD(L, ntop, AF_INET6);
+	SYSCON_ADD(L, ntop, AF_UNIX);
+	SYSCON_ADD(L, ntop, AF_NETLINK);
+	SYSCON_ADD(L, ntop, SOCK_STREAM);
+	SYSCON_ADD(L, ntop, SOCK_DGRAM);
+	SYSCON_ADD(L, ntop, SOCK_SEQPACKET);
+	SYSCON_ADD(L, ntop, SOCK_RAW);
+	SYSCON_ADD(L, ntop, SOCK_PACKET);
+	SYSCON_ADD(L, ntop, SOCK_NONBLOCK);
+	SYSCON_ADD(L, ntop, SOCK_CLOEXEC);
+	SYSCON_ADD(L, ntop, IPPROTO_IP);
+	SYSCON_ADD(L, ntop, IPPROTO_ICMP);
+	SYSCON_ADD(L, ntop, IPPROTO_UDP);
+	SYSCON_ADD(L, ntop, IPPROTO_UDPLITE);
+	SYSCON_ADD(L, ntop, IPPROTO_TCP);
+	SYSCON_ADD(L, ntop, IPPROTO_IGMP);
 
-	lua_pushinteger(L, SEEK_CUR);
-	lua_setfield(L, -2, "SEEK_CUR");
+	/* definitions for socket operations */
+	SYSCON_ADD(L, ntop, SOL_SOCKET);
+	SYSCON_ADD(L, ntop, SOL_TCP);
+	SYSCON_ADD(L, ntop, SO_BROADCAST);
+	SYSCON_ADD(L, ntop, SO_ERROR);
+	SYSCON_ADD(L, ntop, SO_DONTROUTE);
+	SYSCON_ADD(L, ntop, SO_KEEPALIVE);
+	SYSCON_ADD(L, ntop, SO_RCVBUF);
+	SYSCON_ADD(L, ntop, SO_REUSEADDR);
+	SYSCON_ADD(L, ntop, SO_REUSEPORT);
+	SYSCON_ADD(L, ntop, SO_SNDBUF);
+	SYSCON_ADD(L, ntop, SO_TIMESTAMP);
+	SYSCON_ADD(L, ntop, TCP_NODELAY);
+	SYSCON_ADD(L, ntop, TCP_CORK);
+	SYSCON_ADD(L, ntop, TCP_KEEPIDLE);
+	SYSCON_ADD(L, ntop, TCP_KEEPINTVL);
+	SYSCON_ADD(L, ntop, TCP_KEEPCNT);
+	SYSCON_ADD(L, ntop, TCP_SYNCNT);
+	SYSCON_ADD(L, ntop, NETLINK_ROUTE);
+	SYSCON_ADD(L, ntop, NETLINK_SELINUX);
+	SYSCON_ADD(L, ntop, NETLINK_AUDIT);
+	SYSCON_ADD(L, ntop, NETLINK_CONNECTOR);
+	SYSCON_ADD(L, ntop, NETLINK_NETFILTER);
+	SYSCON_ADD(L, ntop, NETLINK_SOCK_DIAG);
+	SYSCON_ADD(L, ntop, NETLINK_KOBJECT_UEVENT);
+	SYSCON_ADD(L, ntop, NETLINK_GENERIC);
 
-	lua_pushinteger(L, SEEK_END);
-	lua_setfield(L, -2, "SEEK_END");
+	/* flags for send/recv/sendto/recvfrom system calls */
+	SYSCON_ADD(L, ntop, MSG_CONFIRM);
+	SYSCON_ADD(L, ntop, MSG_DONTROUTE);
+	SYSCON_ADD(L, ntop, MSG_DONTWAIT);
+	SYSCON_ADD(L, ntop, MSG_EOR);
+	SYSCON_ADD(L, ntop, MSG_MORE);
+	SYSCON_ADD(L, ntop, MSG_NOSIGNAL);
+	SYSCON_ADD(L, ntop, MSG_OOB);
+	SYSCON_ADD(L, ntop, MSG_PEEK);
+	SYSCON_ADD(L, ntop, MSG_TRUNC);
+	SYSCON_ADD(L, ntop, MSG_WAITALL);
+
+	/* constants for IO `poll */
+	SYSCON_ADD(L, ntop, POLLIN);
+	SYSCON_ADD(L, ntop, POLLPRI);
+	SYSCON_ADD(L, ntop, POLLOUT);
+	SYSCON_ADD(L, ntop, POLLERR);
+	SYSCON_ADD(L, ntop, POLLHUP);
+	SYSCON_ADD(L, ntop, POLLNVAL);
+
+	/* inotify related definitions */
+	SYSCON_ADD(L, ntop, IN_ACCESS);
+	SYSCON_ADD(L, ntop, IN_ATTRIB);
+	SYSCON_ADD(L, ntop, IN_CLOSE_WRITE);
+	SYSCON_ADD(L, ntop, IN_CLOSE_NOWRITE);
+	SYSCON_ADD(L, ntop, IN_CREATE);
+	SYSCON_ADD(L, ntop, IN_DELETE);
+	SYSCON_ADD(L, ntop, IN_DELETE_SELF);
+	SYSCON_ADD(L, ntop, IN_MODIFY);
+	SYSCON_ADD(L, ntop, IN_MOVE_SELF);
+	SYSCON_ADD(L, ntop, IN_MOVED_FROM);
+	SYSCON_ADD(L, ntop, IN_MOVED_TO);
+	SYSCON_ADD(L, ntop, IN_OPEN);
+	SYSCON_ADD(L, ntop, IN_MOVE);
+	SYSCON_ADD(L, ntop, IN_CLOSE);
+	SYSCON_ADD(L, ntop, IN_DONT_FOLLOW);
+	SYSCON_ADD(L, ntop, IN_EXCL_UNLINK);
+	SYSCON_ADD(L, ntop, IN_MASK_ADD);
+	SYSCON_ADD(L, ntop, IN_ONESHOT);
+	SYSCON_ADD(L, ntop, IN_ONLYDIR);
+	SYSCON_ADD(L, ntop, IN_MASK_CREATE);
+	SYSCON_ADD(L, ntop, IN_IGNORED);
+	SYSCON_ADD(L, ntop, IN_ISDIR);
+	SYSCON_ADD(L, ntop, IN_Q_OVERFLOW);
+	SYSCON_ADD(L, ntop, IN_UNMOUNT);
+
+	/* flags for `glob(3) */
+	SYSCON_ADD(L, ntop, GLOB_ERR);
+	SYSCON_ADD(L, ntop, GLOB_MARK);
+	SYSCON_ADD(L, ntop, GLOB_NOSORT);
+	SYSCON_ADD(L, ntop, GLOB_DOOFFS);
+	SYSCON_ADD(L, ntop, GLOB_NOCHECK);
+	SYSCON_ADD(L, ntop, GLOB_APPEND);
+	SYSCON_ADD(L, ntop, GLOB_NOESCAPE);
+
+	/* operation definitions for `fcntl(2) */
+	SYSCON_ADD(L, ntop, F_DUPFD);
+	SYSCON_ADD(L, ntop, F_DUPFD_CLOEXEC);
+	SYSCON_ADD(L, ntop, F_GETFD);
+	SYSCON_ADD(L, ntop, F_SETFD);
+	SYSCON_ADD(L, ntop, FD_CLOEXEC);
+	SYSCON_ADD(L, ntop, F_GETFL);
+	SYSCON_ADD(L, ntop, F_SETFL);
+	SYSCON_ADD(L, ntop, F_NOTIFY);
+	SYSCON_ADD(L, ntop, F_SETPIPE_SZ);
+	SYSCON_ADD(L, ntop, F_GETPIPE_SZ);
+
+	/* error constants */
+	SYSCON_ADD(L, ntop, EPERM);
+	SYSCON_ADD(L, ntop, ENOENT);
+	SYSCON_ADD(L, ntop, ESRCH);
+	SYSCON_ADD(L, ntop, EINTR);
+	SYSCON_ADD(L, ntop, EIO);
+	SYSCON_ADD(L, ntop, ENXIO);
+	SYSCON_ADD(L, ntop, E2BIG);
+	SYSCON_ADD(L, ntop, ENOEXEC);
+	SYSCON_ADD(L, ntop, EBADF);
+	SYSCON_ADD(L, ntop, ECHILD);
+	SYSCON_ADD(L, ntop, EAGAIN);
+	SYSCON_ADD(L, ntop, ENOMEM);
+	SYSCON_ADD(L, ntop, EACCES);
+	SYSCON_ADD(L, ntop, EFAULT);
+	SYSCON_ADD(L, ntop, ENOTBLK);
+	SYSCON_ADD(L, ntop, EBUSY);
+	SYSCON_ADD(L, ntop, EEXIST);
+	SYSCON_ADD(L, ntop, EXDEV);
+	SYSCON_ADD(L, ntop, ENODEV);
+	SYSCON_ADD(L, ntop, ENOTDIR);
+	SYSCON_ADD(L, ntop, EISDIR);
+	SYSCON_ADD(L, ntop, EINVAL);
+	SYSCON_ADD(L, ntop, ENFILE);
+	SYSCON_ADD(L, ntop, EMFILE);
+	SYSCON_ADD(L, ntop, ENOTTY);
+	SYSCON_ADD(L, ntop, ETXTBSY);
+	SYSCON_ADD(L, ntop, EFBIG);
+	SYSCON_ADD(L, ntop, ENOSPC);
+	SYSCON_ADD(L, ntop, ESPIPE);
+	SYSCON_ADD(L, ntop, EROFS);
+	SYSCON_ADD(L, ntop, EMLINK);
+	SYSCON_ADD(L, ntop, EPIPE);
+	SYSCON_ADD(L, ntop, EDOM);
+	SYSCON_ADD(L, ntop, ERANGE);
+	SYSCON_ADD(L, ntop, EDEADLK);
+	SYSCON_ADD(L, ntop, ENAMETOOLONG);
+	SYSCON_ADD(L, ntop, ENOLCK);
+	SYSCON_ADD(L, ntop, ENOSYS);
+	SYSCON_ADD(L, ntop, ENOTEMPTY);
+	SYSCON_ADD(L, ntop, ELOOP);
+	SYSCON_ADD(L, ntop, EWOULDBLOCK);
+	SYSCON_ADD(L, ntop, ENOMSG);
+	SYSCON_ADD(L, ntop, EIDRM);
+	SYSCON_ADD(L, ntop, ECHRNG);
+	SYSCON_ADD(L, ntop, EL2NSYNC);
+	SYSCON_ADD(L, ntop, EL3HLT);
+	SYSCON_ADD(L, ntop, EL3RST);
+	SYSCON_ADD(L, ntop, ELNRNG);
+	SYSCON_ADD(L, ntop, EUNATCH);
+	SYSCON_ADD(L, ntop, ENOCSI);
+	SYSCON_ADD(L, ntop, EL2HLT);
+	SYSCON_ADD(L, ntop, EBADE);
+	SYSCON_ADD(L, ntop, EBADR);
+	SYSCON_ADD(L, ntop, EXFULL);
+	SYSCON_ADD(L, ntop, ENOANO);
+	SYSCON_ADD(L, ntop, EBADRQC);
+	SYSCON_ADD(L, ntop, EBADSLT);
+	SYSCON_ADD(L, ntop, EDEADLOCK);
+	SYSCON_ADD(L, ntop, EBFONT);
+	SYSCON_ADD(L, ntop, ENOSTR);
+	SYSCON_ADD(L, ntop, ENODATA);
+	SYSCON_ADD(L, ntop, ETIME);
+	SYSCON_ADD(L, ntop, ENOSR);
+	SYSCON_ADD(L, ntop, ENONET);
+	SYSCON_ADD(L, ntop, ENOPKG);
+	SYSCON_ADD(L, ntop, EREMOTE);
+	SYSCON_ADD(L, ntop, ENOLINK);
+	SYSCON_ADD(L, ntop, EADV);
+	SYSCON_ADD(L, ntop, ESRMNT);
+	SYSCON_ADD(L, ntop, ECOMM);
+	SYSCON_ADD(L, ntop, EPROTO);
+	SYSCON_ADD(L, ntop, EMULTIHOP);
+	SYSCON_ADD(L, ntop, EDOTDOT);
+	SYSCON_ADD(L, ntop, EBADMSG);
+	SYSCON_ADD(L, ntop, EOVERFLOW);
+	SYSCON_ADD(L, ntop, ENOTUNIQ);
+	SYSCON_ADD(L, ntop, EBADFD);
+	SYSCON_ADD(L, ntop, EREMCHG);
+	SYSCON_ADD(L, ntop, ELIBACC);
+	SYSCON_ADD(L, ntop, ELIBBAD);
+	SYSCON_ADD(L, ntop, ELIBSCN);
+	SYSCON_ADD(L, ntop, ELIBMAX);
+	SYSCON_ADD(L, ntop, ELIBEXEC);
+	SYSCON_ADD(L, ntop, EILSEQ);
+	SYSCON_ADD(L, ntop, ERESTART);
+	SYSCON_ADD(L, ntop, ESTRPIPE);
+	SYSCON_ADD(L, ntop, EUSERS);
+	SYSCON_ADD(L, ntop, ENOTSOCK);
+	SYSCON_ADD(L, ntop, EDESTADDRREQ);
+	SYSCON_ADD(L, ntop, EMSGSIZE);
+	SYSCON_ADD(L, ntop, EPROTOTYPE);
+	SYSCON_ADD(L, ntop, ENOPROTOOPT);
+	SYSCON_ADD(L, ntop, EPROTONOSUPPORT);
+	SYSCON_ADD(L, ntop, ESOCKTNOSUPPORT);
+	SYSCON_ADD(L, ntop, EOPNOTSUPP);
+	SYSCON_ADD(L, ntop, EPFNOSUPPORT);
+	SYSCON_ADD(L, ntop, EAFNOSUPPORT);
+	SYSCON_ADD(L, ntop, EADDRINUSE);
+	SYSCON_ADD(L, ntop, EADDRNOTAVAIL);
+	SYSCON_ADD(L, ntop, ENETDOWN);
+	SYSCON_ADD(L, ntop, ENETUNREACH);
+	SYSCON_ADD(L, ntop, ENETRESET);
+	SYSCON_ADD(L, ntop, ECONNABORTED);
+	SYSCON_ADD(L, ntop, ECONNRESET);
+	SYSCON_ADD(L, ntop, ENOBUFS);
+	SYSCON_ADD(L, ntop, EISCONN);
+	SYSCON_ADD(L, ntop, ENOTCONN);
+	SYSCON_ADD(L, ntop, ESHUTDOWN);
+	SYSCON_ADD(L, ntop, ETOOMANYREFS);
+	SYSCON_ADD(L, ntop, ETIMEDOUT);
+	SYSCON_ADD(L, ntop, ECONNREFUSED);
+	SYSCON_ADD(L, ntop, EHOSTDOWN);
+	SYSCON_ADD(L, ntop, EHOSTUNREACH);
+	SYSCON_ADD(L, ntop, EALREADY);
+	SYSCON_ADD(L, ntop, EINPROGRESS);
+	SYSCON_ADD(L, ntop, ESTALE);
+	SYSCON_ADD(L, ntop, EUCLEAN);
+	SYSCON_ADD(L, ntop, ENOTNAM);
+	SYSCON_ADD(L, ntop, ENAVAIL);
+	SYSCON_ADD(L, ntop, EISNAM);
+	SYSCON_ADD(L, ntop, EREMOTEIO);
+	SYSCON_ADD(L, ntop, EDQUOT);
+	SYSCON_ADD(L, ntop, ENOMEDIUM);
+	SYSCON_ADD(L, ntop, EMEDIUMTYPE);
+	SYSCON_ADD(L, ntop, ECANCELED);
+	SYSCON_ADD(L, ntop, ENOKEY);
+	SYSCON_ADD(L, ntop, EKEYEXPIRED);
+	SYSCON_ADD(L, ntop, EKEYREVOKED);
+	SYSCON_ADD(L, ntop, EKEYREJECTED);
+	SYSCON_ADD(L, ntop, EOWNERDEAD);
+	SYSCON_ADD(L, ntop, ENOTRECOVERABLE);
+	SYSCON_ADD(L, ntop, ERFKILL);
+	SYSCON_ADD(L, ntop, ENOTSUP);
 
 	return 1;
 }
