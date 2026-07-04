@@ -262,6 +262,92 @@ static int sysutil_access(lua_State * L)
 	return 1;
 }
 
+static int sysutil_base64(lua_State * L)
+{
+	int ret, ntop;
+	size_t rlen, dlen;
+	const char * rawd;
+	char * outd = NULL;
+
+	rlen = dlen = 0;
+	ntop = lua_gettop(L);
+	rawd = sysutil_isstring(L, ntop, 1, &rlen);
+	if (rawd == NULL || rlen == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EFAULT);
+		return 2;
+	}
+
+	if (ntop >= 2 && lua_toboolean(L, 2)) {
+		// base64 buffer decode
+		dlen = B64_DECODE_LEN(rlen) + 4;
+		outd = (char *) malloc(dlen);
+		if (outd == NULL)
+			goto oom;
+		ret = b64_decode(rawd, outd, dlen - 1);
+	} else {
+		dlen = B64_ENCODE_LEN(rlen) + 4;
+		outd = (char *) malloc(dlen);
+		if (outd == NULL)
+			goto oom;
+		ret = b64_encode(rawd, rlen, outd, dlen - 1);
+	}
+
+	if (ret > 0) {
+		lua_pushlstring(L, outd, (size_t) ret);
+		free(outd);
+		return 1;
+	}
+
+	free(outd);
+	lua_pushnil(L);
+	lua_pushinteger(L, EINVAL);
+	return 2;
+
+oom:
+	lua_pushnil(L);
+	lua_pushinteger(L, ENOMEM);
+	return 2;
+}
+
+static int sysutil_basename(lua_State * L)
+{
+	int ntop;
+	size_t len;
+	const char * fpath;
+	char * newpath, * r;
+
+	len = 0;
+	ntop = lua_gettop(L);
+	fpath = sysutil_isstring(L, ntop, 1, &len);
+	if (fpath == NULL || len == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EFAULT);
+		return 2;
+	}
+
+	newpath = (char *) malloc(len + 1);
+	if (newpath == NULL) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ENOMEM);
+		return 2;
+	}
+
+	memcpy(newpath, fpath, len);
+	newpath[len] = '\0';
+	r = basename(newpath);
+	if (r != NULL) {
+		lua_pushstring(L, r);
+		free(newpath);
+		return 1;
+	}
+
+	free(newpath);
+	lua_pushnil(L);
+	lua_pushinteger(L, EINVAL);
+	return 2;
+}
+
 static int sysutil_uptime(lua_State * L)
 {
 	int ret, ntop;
@@ -3284,92 +3370,6 @@ err0:
 	return 1;
 }
 
-static int sysutil_base64(lua_State * L)
-{
-	int ret, ntop;
-	size_t rlen, dlen;
-	const char * rawd;
-	char * outd = NULL;
-
-	rlen = dlen = 0;
-	ntop = lua_gettop(L);
-	rawd = sysutil_isstring(L, ntop, 1, &rlen);
-	if (rawd == NULL || rlen == 0) {
-		lua_pushnil(L);
-		lua_pushinteger(L, EFAULT);
-		return 2;
-	}
-
-	if (ntop >= 2 && lua_toboolean(L, 2)) {
-		// base64 buffer decode
-		dlen = B64_DECODE_LEN(rlen) + 4;
-		outd = (char *) malloc(dlen);
-		if (outd == NULL)
-			goto oom;
-		ret = b64_decode(rawd, outd, dlen - 1);
-	} else {
-		dlen = B64_ENCODE_LEN(rlen) + 4;
-		outd = (char *) malloc(dlen);
-		if (outd == NULL)
-			goto oom;
-		ret = b64_encode(rawd, rlen, outd, dlen - 1);
-	}
-
-	if (ret > 0) {
-		lua_pushlstring(L, outd, (size_t) ret);
-		free(outd);
-		return 1;
-	}
-
-	free(outd);
-	lua_pushnil(L);
-	lua_pushinteger(L, EINVAL);
-	return 2;
-
-oom:
-	lua_pushnil(L);
-	lua_pushinteger(L, ENOMEM);
-	return 2;
-}
-
-static int sysutil_basename(lua_State * L)
-{
-	int ntop;
-	size_t len;
-	const char * fpath;
-	char * newpath, * r;
-
-	len = 0;
-	ntop = lua_gettop(L);
-	fpath = sysutil_isstring(L, ntop, 1, &len);
-	if (len == 0 || empty_str(fpath)) {
-		lua_pushnil(L);
-		lua_pushinteger(L, EFAULT);
-		return 2;
-	}
-
-	newpath = (char *) malloc(len + 1);
-	if (newpath == NULL) {
-		lua_pushnil(L);
-		lua_pushinteger(L, ENOMEM);
-		return 2;
-	}
-
-	memcpy(newpath, fpath, len);
-	newpath[len] = '\0';
-	r = basename(newpath);
-	if (r != NULL) {
-		lua_pushstring(L, r);
-		free(newpath);
-		return 1;
-	}
-
-	free(newpath);
-	lua_pushnil(L);
-	lua_pushinteger(L, EINVAL);
-	return 2;
-}
-
 static int sysutil_listen(lua_State * L)
 {
 	lua_Integer luai;
@@ -4226,7 +4226,7 @@ error:
 	Flags = (int) l_int;
 
 	addrp = sysutil_isstring(L, ntop, 4, &addrlen);
-	if (addrp && addrlen > 0 && ntop >= 5) {
+	if (addrp && addrlen > 0) {
 		l_int = 0;
 		if (sysutil_isinteger(L, ntop, 5, &l_int))
 			port = (int) l_int;
