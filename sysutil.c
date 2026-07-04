@@ -4879,7 +4879,9 @@ int luaopen_sysutil(lua_State * L)
 	SYSCON_ADD(L, ntop, IN_MASK_ADD);
 	SYSCON_ADD(L, ntop, IN_ONESHOT);
 	SYSCON_ADD(L, ntop, IN_ONLYDIR);
+#ifdef IN_MASK_CREATE
 	SYSCON_ADD(L, ntop, IN_MASK_CREATE);
+#endif
 	SYSCON_ADD(L, ntop, IN_IGNORED);
 	SYSCON_ADD(L, ntop, IN_ISDIR);
 	SYSCON_ADD(L, ntop, IN_Q_OVERFLOW);
