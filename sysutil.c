@@ -1188,11 +1188,9 @@ static int sysutil_multicast(lua_State * L)
 		ipmr.imr_address.s_addr = INADDR_ANY;
 
 	ret = setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &ipmr, sizeof(ipmr));
-	if (ret == -1)
-		goto err0;
-	ret = setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &ipmr, sizeof(ipmr));
-	if (ret == -1) {
-err0:
+	if (ret == 0)
+		ret = setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &ipmr, sizeof(ipmr));
+	if (ret < 0) {
 		ret = errno;
 		lua_pushnil(L);
 		lua_pushinteger(L, ret);
@@ -1205,6 +1203,80 @@ err0:
 static int sysutil_nonblock(lua_State * L)
 {
 	return sysutil_fcntl_common(L, F_GETFL, F_SETFL, O_NONBLOCK);
+}
+
+static int sysutil_nslookup(lua_State * L)
+{
+	lua_Integer iptype;
+	int ret, ntop, num;
+	const char * hoststr;
+	char addr_list[10][50];
+	struct addrinfo * addrs, * addrp;
+
+	ntop = lua_gettop(L);
+	hoststr = sysutil_isstring(L, ntop, 1, NULL);
+	if (empty_str(hoststr)) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	addrs = NULL;
+	ret = getaddrinfo(hoststr, NULL, NULL, &addrs);
+	if (ret != 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	num = 0;
+	iptype = 0x3;
+	memset(addr_list, 0, sizeof(addr_list));
+	sysutil_isinteger(L, ntop, 2, &iptype);
+	for (addrp = addrs; addrp != NULL; addrp = addrp->ai_next) {
+		char addr[50];
+
+		memset(addr, 0, sizeof(addr));
+		if (addrp->ai_family == AF_INET && (iptype & 0x1) != 0) {
+			const struct sockaddr_in * p;
+			p = (const struct sockaddr_in *) addrp->ai_addr;
+			inet_ntop(AF_INET, &p->sin_addr, addr, sizeof(addr) - 1);
+		} else if (addrp->ai_family == AF_INET6 && (iptype & 0x2) != 0) {
+			const struct sockaddr_in6 * p;
+			p = (const struct sockaddr_in6 *) addrp->ai_addr;
+			inet_ntop(AF_INET6, &p->sin6_addr, addr, sizeof(addr) - 1);
+		}
+
+		if (addr[0] != '\0') {
+			int idx, isdup = 0;
+			for (idx = 0; idx < num; ++idx) {
+				if (strcmp(addr_list[idx], addr) == 0) {
+					isdup = 1;
+					break;
+				}
+			}
+			if (isdup == 0) {
+				strncpy(addr_list[num], addr, sizeof(addr) - 1);
+				num++;
+			}
+		}
+		if (num >= 10)
+			break;
+	}
+
+	freeaddrinfo(addrs);
+	if (num == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ERANGE);
+		return 2;
+	}
+
+	lua_createtable(L, num + 1, 0);
+	for (ret = 0; ret < num; ++ret) {
+		lua_pushstring(L, addr_list[ret]);
+		lua_rawseti(L, ntop + 1, (lua_Integer) (ret + 1));
+	}
+	return 1;
 }
 
 static int sysutil_read(lua_State * L)
@@ -4253,6 +4325,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "mountpoint",     sysutil_mountpoint },
 	{ "multicast",      sysutil_multicast },
 	{ "nonblock",       sysutil_nonblock },
+	{ "nslookup",       sysutil_nslookup },
 	{ "open",           sysutil_open },
 	{ "poll",           sysutil_poll },
 	{ "read",           sysutil_read },
