@@ -31,7 +31,6 @@ build = {
 
    install = {
 	  lib = {
-		 ["syscon"] = "syscon.so",
 		 ["sysutil"] = "sysutil.so",
 	  },
 	  lua = {
