@@ -4665,6 +4665,26 @@ static const luaL_Reg sysutil_regs[] = {
 	{ placeholder,      NULL },
 	{ placeholder,      NULL },
 	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
 #endif
 	{ NULL,             NULL },
 };
@@ -4675,7 +4695,7 @@ int luaopen_sysutil(lua_State * L)
 	/* Expanded from macro `luaL_newlib. */
 	/* 95: reserve extra slots from following constants: */
 	luaL_checkversion(L);
-	lua_createtable(L, 0, 384);
+	lua_createtable(L, 0, 400);
 	luaL_setfuncs(L, sysutil_regs, 0);
 #else
 	luaL_register(L, "sysutil", sysutil_regs);
@@ -4804,6 +4824,40 @@ int luaopen_sysutil(lua_State * L)
 	SYSCON_ADD(L, ntop, POLLERR);
 	SYSCON_ADD(L, ntop, POLLHUP);
 	SYSCON_ADD(L, ntop, POLLNVAL);
+
+	/* add constants for signal handling */
+	SYSCON_ADD(L, ntop, SIGHUP);
+	SYSCON_ADD(L, ntop, SIGINT);
+	SYSCON_ADD(L, ntop, SIGQUIT);
+	SYSCON_ADD(L, ntop, SIGILL);
+	SYSCON_ADD(L, ntop, SIGTRAP);
+	SYSCON_ADD(L, ntop, SIGABRT);
+	SYSCON_ADD(L, ntop, SIGBUS);
+	SYSCON_ADD(L, ntop, SIGFPE);
+	SYSCON_ADD(L, ntop, SIGKILL);
+	SYSCON_ADD(L, ntop, SIGUSR1);
+	SYSCON_ADD(L, ntop, SIGSEGV);
+	SYSCON_ADD(L, ntop, SIGUSR2);
+	SYSCON_ADD(L, ntop, SIGPIPE);
+	SYSCON_ADD(L, ntop, SIGALRM);
+	SYSCON_ADD(L, ntop, SIGTERM);
+	SYSCON_ADD(L, ntop, SIGSTKFLT);
+	SYSCON_ADD(L, ntop, SIGCHLD);
+	SYSCON_ADD(L, ntop, SIGCONT);
+	SYSCON_ADD(L, ntop, SIGSTOP);
+	SYSCON_ADD(L, ntop, SIGTSTP);
+	SYSCON_ADD(L, ntop, SIGTTIN);
+	SYSCON_ADD(L, ntop, SIGTTOU);
+	SYSCON_ADD(L, ntop, SIGURG);
+	SYSCON_ADD(L, ntop, SIGXCPU);
+	SYSCON_ADD(L, ntop, SIGXFSZ);
+	SYSCON_ADD(L, ntop, SIGVTALRM);
+	SYSCON_ADD(L, ntop, SIGPROF);
+	SYSCON_ADD(L, ntop, SIGWINCH);
+	SYSCON_ADD(L, ntop, SIGIO);
+	SYSCON_ADD(L, ntop, SIGPWR);
+	SYSCON_ADD(L, ntop, SIGSYS);
+	SYSCON_ADD(L, ntop, SIGRTMIN);
 
 	/* inotify related definitions */
 	SYSCON_ADD(L, ntop, IN_ACCESS);
