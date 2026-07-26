@@ -85,11 +85,29 @@ static int sysutil_checkstack(lua_State * lua, int num)
 
 static inline int empty_str(const char * p)
 {
-	if (p == NULL)
-		return 1;
-	if (p[0] == '\0')
-		return 1;
-	return 0;
+	return (p == NULL) || (*p == '\0');
+}
+
+static inline void sysutil_push_int(lua_State * L, int64_t v)
+{
+	if (sizeof(lua_Integer) == 8) {
+		lua_pushinteger(L, (lua_Integer) v);
+	} else if (v < -2147483648ll || v > 2147483647ll) {
+		lua_pushnumber(L, (lua_Number) v);
+	} else {
+		lua_pushinteger(L, (lua_Integer) v);
+	}
+}
+
+static inline void sysutil_push_uint(lua_State * L, uint64_t v)
+{
+	if (sizeof(lua_Integer) == 8 && v <= 0x7FFFFFFFFFFFFFFFull) {
+		lua_pushinteger(L, (lua_Integer) v);
+	} else if (v > 2147483647) {
+		lua_pushnumber(L, (lua_Number) v);
+	} else {
+		lua_pushinteger(L, (lua_Integer) v);
+	}
 }
 
 static const char * sysutil_isstring(lua_State * L,
@@ -144,7 +162,7 @@ static int sysutil_isinteger(lua_State * L,
 	return 0;
 }
 
-static int sysutil_push_addr(lua_State * L, char * addr, socklen_t sock_len, int numret)
+static int sysutil_pushaddr(lua_State * L, char * addr, socklen_t sock_len, int numret)
 {
 	char str_a[96];
 	lua_Integer port;
@@ -230,7 +248,7 @@ static int sysutil_accept(lua_State * L)
 	}
 
 	lua_pushinteger(L, newfd);
-	return sysutil_push_addr(L, addr, slt, 1);
+	return sysutil_pushaddr(L, addr, slt, 1);
 }
 
 static int sysutil_access(lua_State * L)
@@ -758,12 +776,7 @@ static int sysutil_checkmask(lua_State * L)
 		lua_pushinteger(L, maskv);
 	else
 		lua_pushboolean(L, 0);
-	if (sizeof(lua_Integer) == 8)
-		lua_pushinteger(L, (lua_Integer) addr[0]);
-	else if (addr[0] >= 0x80000000u)
-		lua_pushnumber(L, (lua_Number) addr[0]);
-	else
-		lua_pushinteger(L, (lua_Integer) addr[0]);
+	sysutil_push_uint(L, (uint64_t) addr[0]);
 	return 2;
 }
 
@@ -1080,7 +1093,7 @@ static int sysutil_common_delay(lua_State * L, int issec)
 	int ret, error;
 	int argc, nexti;
 	lua_Integer luai;
-	long long delaysec;
+	int64_t delaysec;
 	struct timespec delay;
 	pthread_mutex_t * lockp;
 
@@ -1107,9 +1120,9 @@ static int sysutil_common_delay(lua_State * L, int issec)
 			lua_pushinteger(L, EINVAL);
 			return 2;
 		}
-		delaysec = (long long) lua_tonumber(L, 1);
+		delaysec = (int64_t) lua_tonumber(L, 1);
 	} else
-		delaysec = (long long) luai;
+		delaysec = (int64_t) luai;
 
 	if (delaysec == 0) {
 		lua_pushinteger(L, 0);
@@ -1373,30 +1386,17 @@ static int sysutil_getenv(lua_State * L)
 static int sysutil_getid(lua_State * L)
 {
 	unsigned long pid;
-	unsigned long tid;
+
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
-
 #ifdef SYSUTIL_SYSCALL
 	pid = (unsigned long) syscall(SYS_gettid, 0ul, 0ul);
 #else
 	pid = (unsigned long) gettid();
 #endif
-	if (sizeof(lua_Integer) == 8)
-		lua_pushinteger(L, (lua_Integer) pid);
-	else if (pid >= 0x80000000ul)
-		lua_pushnumber(L, (lua_Number) pid);
-	else
-		lua_pushinteger(L, (lua_Integer) pid);
 
-	tid = (unsigned long) pthread_self();
-	if (sizeof(lua_Integer) == 8)
-		lua_pushinteger(L, (lua_Integer) tid);
-	else if (tid >= 0x80000000ul)
-		lua_pushnumber(L, (lua_Number) tid);
-	else
-		lua_pushinteger(L, (lua_Integer) tid);
-
+	sysutil_push_int(L, (int64_t) pid);
+	sysutil_push_uint(L, (uint64_t) pthread_self());
 	return 2;
 }
 
@@ -1438,38 +1438,28 @@ static int sysutil_getpeername(lua_State * L)
 		return 2;
 	}
 
-	return sysutil_push_addr(L, (char *) &addr, slt, 0);
+	return sysutil_pushaddr(L, (char *) &addr, slt, 0);
 }
 
 static int sysutil_getpid(lua_State * L)
 {
-	unsigned long pid;
+	pid_t pid;
 	if (sysutil_checkstack(L, 1) < 0)
 		return 0;
 
-	pid = (unsigned long) getpid();
-	if (sizeof(lua_Integer) == 8)
-		lua_pushinteger(L, (lua_Integer) pid);
-	else if (pid >= 0x80000000ul)
-		lua_pushnumber(L, (lua_Number) pid);
-	else
-		lua_pushinteger(L, (lua_Integer) pid);
+	pid = getpid();
+	sysutil_push_int(L, (int64_t) pid);
 	return 1;
 }
 
 static int sysutil_getppid(lua_State * L)
 {
-	unsigned long pid;
+	pid_t pid;
 	if (sysutil_checkstack(L, 1) < 0)
 		return 0;
 
-	pid = (unsigned long) getppid();
-	if (sizeof(lua_Integer) == 8)
-		lua_pushinteger(L, (lua_Integer) pid);
-	else if (pid >= 0x80000000ul)
-		lua_pushnumber(L, (lua_Number) pid);
-	else
-		lua_pushinteger(L, (lua_Integer) pid);
+	pid = getppid();
+	sysutil_push_int(L, (int64_t) pid);
 	return 1;
 }
 
@@ -1500,13 +1490,8 @@ static int sysutil_getrlimit(lua_State * L)
 		return 2;
 	}
 
-	if (sizeof(lua_Integer) == 8) {
-		lua_pushinteger(L, (lua_Integer) rl.rlim_cur);
-		lua_pushinteger(L, (lua_Integer) rl.rlim_max);
-	} else {
-		lua_pushnumber(L, (lua_Number) rl.rlim_cur);
-		lua_pushnumber(L, (lua_Number) rl.rlim_max);
-	}
+	sysutil_push_int(L, (int64_t) rl.rlim_cur);
+	sysutil_push_int(L, (int64_t) rl.rlim_max);
 	return 2;
 }
 
@@ -1548,7 +1533,7 @@ static int sysutil_getsockname(lua_State * L)
 		return 2;
 	}
 
-	return sysutil_push_addr(L, (char *) &addr, slt, 0);
+	return sysutil_pushaddr(L, (char *) &addr, slt, 0);
 }
 
 static int sysutil_getsockopt(lua_State * L)
@@ -1943,7 +1928,7 @@ static int sysutil_lockfile(lua_State * L)
 
 	for (;;) {
 		int error, ret;
-		long long flow;
+		int64_t flow;
 		struct timespec nowt;
 		ret = flock(fd, LOCK_EX | (timeout > 0 ? LOCK_NB : 0));
 		if (ret == 0)
@@ -1963,9 +1948,9 @@ static int sysutil_lockfile(lua_State * L)
 
 		nowt.tv_sec = 0; nowt.tv_nsec = 0;
 		clock_gettime(CLOCK_BOOTTIME, &nowt);
-		flow = (long long) (nowt.tv_sec - spec.tv_sec);
-		flow = flow * 1000 + (long long) ((nowt.tv_nsec - spec.tv_nsec) / 1000000);
-		if (flow >= (long long) timeout) {
+		flow = (int64_t) (nowt.tv_sec - spec.tv_sec);
+		flow = flow * 1000 + (int64_t) ((nowt.tv_nsec - spec.tv_nsec) / 1000000);
+		if (flow >= (int64_t) timeout) {
 			close(fd);
 			lua_pushnil(L);
 			lua_pushinteger(L, ETIMEDOUT);
@@ -2043,12 +2028,7 @@ static int sysutil_lseek(lua_State * L)
 		return 2;
 	}
 
-	if (sizeof(lua_Integer) == 0x8)
-		lua_pushinteger(L, (lua_Integer) off1);
-	else if (off1 <= 0x7FFFFFFF)
-		lua_pushinteger(L, (lua_Integer) off1);
-	else
-		lua_pushnumber(L, (lua_Number) off1);
+	sysutil_push_int(L, (int64_t) off1);
 	return 1;
 }
 
@@ -2791,7 +2771,7 @@ error:
 
 	lua_pushlstring(L, buf, (size_t) rval);
 	free(buf);
-	return sysutil_push_addr(L, addr, slt, 1);
+	return sysutil_pushaddr(L, addr, slt, 1);
 }
 
 static int sysutil_rename(lua_State * L)
@@ -3155,69 +3135,91 @@ err0:
 
 static int sysutil_sha256(lua_State * L)
 {
-	size_t flen;
-	int ntop, isfile;
+	size_t flen, rlen;
+	int ntop, isfile, fd;
 	const char * filp;
 	struct zsha256 sha256;
+	lua_Integer int_l;
 
-	flen = 0;
+	fd = -1;
 	filp = NULL;
 	isfile = 0;
+	flen = rlen = 0;
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 
 	ntop = lua_gettop(L);
 	if (ntop >= 2 && lua_toboolean(L, 2))
-		isfile = 1;
+		isfile = -1;
 
-	filp = sysutil_isstring(L, ntop, 1, &flen);
-	if (isfile && (filp == NULL || flen == 0)) {
-		lua_pushnil(L);
-		lua_pushinteger(L, EFAULT);
-		return 2;
+	int_l = -1;
+	if (sysutil_isinteger(L, ntop, 1, &int_l)) {
+		fd = (int) int_l;
+		if (fd < 0) {
+			lua_pushnil(L);
+			lua_pushinteger(L, EBADF);
+			return 2;
+		}
+	} else {
+		filp = sysutil_isstring(L, ntop, 1, &flen);
+		if (filp && isfile) {
+			fd = open(filp, O_RDONLY | O_CLOEXEC | O_LARGEFILE);
+			if (fd < 0) {
+				fd = errno;
+				lua_pushnil(L);
+				lua_pushinteger(L, fd);
+				return 2;
+			}
+		}
 	}
 
 	zsha256_init(&sha256);
-	if (isfile) {
-		int fd, error = 0;
+	if (fd >= 0) {
+		int error = 0;
+		size_t totlen;
 		unsigned char * bufp;
 		const size_t rsize = 256 * 1024;
 
-		fd = open(filp, O_RDONLY | O_CLOEXEC);
-		if (fd == -1) {
-			error = errno;
-			lua_pushnil(L);
-			lua_pushinteger(L, error);
-			return 2;
-		}
-
 		bufp = (unsigned char *) malloc(rsize);
 		if (bufp == NULL) {
-			close(fd);
+			if (filp != NULL)
+				close(fd);
 			lua_pushnil(L);
 			lua_pushinteger(L, ENOMEM);
 			return 2;
 		}
 
-		for (;;) {
+		rlen = 0;
+		int_l = 0;
+		totlen = (size_t) ~0ul;
+		if (sysutil_isinteger(L, ntop, 4, &int_l) && int_l > 0)
+			totlen = (size_t) int_l;
+		else
+			totlen--;
+
+		while (rlen < totlen) {
 			ssize_t rl1;
-			rl1 = read(fd, bufp, rsize);
+			size_t rl0 = totlen - rlen;
+			if (rl0 > rsize)
+				rl0 = rsize;
+			rl1 = read(fd, bufp, rl0);
 			if (rl1 < 0) {
 				error = errno;
-				if (error == EINTR)
+				if (error == EINTR) {
+					error = 0;
 					continue;
-				fprintf(stderr, "Error, failed to read %s: %s\n",
-					filp, strerror(error));
-				fflush(stderr);
+				}
 				break;
 			}
 
 			if (rl1 == 0)
 				break;
+			rlen += (size_t) rl1;
 			zsha256_update(&sha256, bufp, (unsigned int) rl1);
 		}
 
-		close(fd);
+		if (filp != NULL)
+			close(fd);
 		free(bufp);
 
 		if (error != 0) { /* failed to read */
@@ -3226,6 +3228,7 @@ static int sysutil_sha256(lua_State * L)
 			return 2;
 		}
 	} else if (filp && flen) {
+		rlen = flen;
 		zsha256_update(&sha256,
 			(const unsigned char *) filp, (unsigned int) flen);
 	}
@@ -3236,11 +3239,13 @@ static int sysutil_sha256(lua_State * L)
 		memset(out, 0, sizeof(out));
 		zsha256_hex(out, sizeof(out), &sha256);
 		lua_pushstring(L, out);
-		return 1;
+		sysutil_push_uint(L, (uint64_t) rlen);
+		return 2;
 	}
 
 	lua_pushlstring(L, (const char *) sha256.hashval, 32);
-	return 1;
+	sysutil_push_uint(L, (uint64_t) rlen);
+	return 2;
 }
 
 static int sysutil_signal(lua_State * L)
@@ -3438,16 +3443,10 @@ static int sysutil_stat(lua_State * L)
 
 	lua_createtable(L, 0, 15);
 
-	if (sizeof(lua_Integer) == 0x8)
-		lua_pushinteger(L, (lua_Integer) fst.st_dev);
-	else
-		lua_pushnumber(L, (lua_Number) fst.st_dev);
+	sysutil_push_uint(L, (uint64_t) fst.st_dev);
 	lua_setfield(L, -2, "st_dev");
 
-	if (sizeof(lua_Integer) == 0x8)
-		lua_pushinteger(L, (lua_Integer) fst.st_ino);
-	else
-		lua_pushnumber(L, (lua_Number) fst.st_ino);
+	sysutil_push_uint(L, (uint64_t) fst.st_ino);
 	lua_setfield(L, -2, "st_ino");
 
 	lua_pushinteger(L, (lua_Integer) fst.st_mode);
@@ -3465,14 +3464,7 @@ static int sysutil_stat(lua_State * L)
 	lua_pushinteger(L, (lua_Integer) fst.st_rdev);
 	lua_setfield(L, -2, "st_rdev");
 
-	if (sizeof(lua_Integer) == 0x8)
-		lua_pushinteger(L, (lua_Integer) fst.st_size);
-	else if (fst.st_size >= 0 && fst.st_size <= 0x7FFFFFFF)
-		lua_pushinteger(L, (lua_Integer) fst.st_size);
-	else {
-		unsigned long long size = (unsigned long long) fst.st_size;
-		lua_pushnumber(L, (lua_Number) size);
-	}
+	sysutil_push_uint(L, (uint64_t) fst.st_size);
 	lua_setfield(L, -2, "st_size");
 
 	lua_pushinteger(L, (lua_Integer) fst.st_blksize);
@@ -3481,34 +3473,13 @@ static int sysutil_stat(lua_State * L)
 	lua_pushinteger(L, (lua_Integer) fst.st_blocks);
 	lua_setfield(L, -2, "st_blocks");
 
-	if (sizeof(lua_Integer) == 8)
-		lua_pushinteger(L, (lua_Integer) fst.st_atime);
-	else if (fst.st_atime >= 0 && fst.st_atime <= 0x7FFFFFFF)
-		lua_pushinteger(L, (lua_Integer) fst.st_atime);
-	else {
-		unsigned long long t = (unsigned long long) fst.st_atime;
-		lua_pushnumber(L, (lua_Number) t);
-	}
+	sysutil_push_uint(L, (uint64_t) fst.st_atime);
 	lua_setfield(L, -2, "st_atime");
 
-	if (sizeof(lua_Integer) == 8)
-		lua_pushinteger(L, (lua_Integer) fst.st_mtime);
-	else if (fst.st_mtime >= 0 && fst.st_mtime <= 0x7FFFFFFF)
-		lua_pushinteger(L, (lua_Integer) fst.st_mtime);
-	else {
-		unsigned long long t = (unsigned long long) fst.st_mtime;
-		lua_pushnumber(L, (lua_Number) t);
-	}
+	sysutil_push_uint(L, (uint64_t) fst.st_mtime);
 	lua_setfield(L, -2, "st_mtime");
 
-	if (sizeof(lua_Integer) == 8)
-		lua_pushinteger(L, (lua_Integer) fst.st_ctime);
-	else if (fst.st_ctime >= 0 && fst.st_ctime <= 0x7FFFFFFF)
-		lua_pushinteger(L, (lua_Integer) fst.st_ctime);
-	else {
-		unsigned long long t = (unsigned long long) fst.st_ctime;
-		lua_pushnumber(L, (lua_Number) t);
-	}
+	sysutil_push_uint(L, (uint64_t) fst.st_ctime);
 	lua_setfield(L, -2, "st_ctime");
 
 	lua_pushboolean(L,  1);
@@ -3843,7 +3814,7 @@ static int sysutil_timedur(lua_State * L)
 	}
 
 	if (lua_gettop(L) >= 2 && lua_toboolean(L, 2)) {
-		long long d = (long long) dur;
+		int64_t d = (int64_t) dur;
 		int msec = (int) (d % 1000);
 		d /= 1000;
 		days = (int) (d / 86400);
@@ -3853,7 +3824,7 @@ static int sysutil_timedur(lua_State * L)
 			days, days >= 2 ? "days" : "day",
 			dsec / 3600, hsec / 60, hsec % 60, msec);
 	} else {
-		long long d = (long long) dur;
+		int64_t d = (int64_t) dur;
 		days = (int) (d / 86400);
 		dsec = (int) (d % 86400);
 		hsec = dsec % 3600;
@@ -4021,7 +3992,7 @@ static int sysutil_upmsec(lua_State * L)
 {
 	int ret;
 	struct timespec nowt;
-	unsigned long long res;
+	uint64_t res;
 
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
@@ -4040,14 +4011,9 @@ static int sysutil_upmsec(lua_State * L)
 		}
 	}
 
-	res = (unsigned long long) nowt.tv_sec;
-	res = res * 1000 + (unsigned long long) (nowt.tv_nsec / 1000000);
-	if (sizeof(lua_Integer) == 0x8)
-		lua_pushinteger(L, (lua_Integer) res);
-	else if (res <= 0x7FFFFFFF)
-		lua_pushinteger(L, (lua_Integer) res);
-	else
-		lua_pushnumber(L, (lua_Number) res);
+	res = (uint64_t) nowt.tv_sec;
+	res = res * 1000 + (uint64_t) (nowt.tv_nsec / 1000000);
+	sysutil_push_uint(L, res);
 	return 1;
 }
 
@@ -4083,15 +4049,7 @@ static int sysutil_uptime(lua_State * L)
 		uptim.tv_nsec = 0;
 	}
 
-	if (sizeof(lua_Integer) == 8) {
-		lua_pushinteger(L, (lua_Integer) uptim.tv_sec);
-	} else if (uptim.tv_sec < 0 || uptim.tv_sec > 0x7FFFFFFF) {
-		unsigned long long tvsec = (unsigned long long) uptim.tv_sec;
-		lua_pushnumber(L, (lua_Number) tvsec);
-	} else {
-		lua_pushinteger(L, (lua_Integer) uptim.tv_sec);
-	}
-
+	sysutil_push_uint(L, (uint64_t) uptim.tv_sec);
 	if (ntop >= 2 && lua_toboolean(L, 2))
 		lua_pushinteger(L, (lua_Integer) uptim.tv_nsec);
 	else
