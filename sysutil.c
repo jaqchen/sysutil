@@ -3136,23 +3136,19 @@ err0:
 static int sysutil_sha256(lua_State * L)
 {
 	size_t flen, rlen;
-	int ntop, isfile, fd;
+	int ntop, fd;
 	const char * filp;
 	struct zsha256 sha256;
 	lua_Integer int_l;
 
 	fd = -1;
 	filp = NULL;
-	isfile = 0;
 	flen = rlen = 0;
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 
-	ntop = lua_gettop(L);
-	if (ntop >= 2 && lua_toboolean(L, 2))
-		isfile = -1;
-
 	int_l = -1;
+	ntop = lua_gettop(L);
 	if (sysutil_isinteger(L, ntop, 1, &int_l)) {
 		fd = (int) int_l;
 		if (fd < 0) {
@@ -3162,7 +3158,7 @@ static int sysutil_sha256(lua_State * L)
 		}
 	} else {
 		filp = sysutil_isstring(L, ntop, 1, &flen);
-		if (filp && isfile) {
+		if (filp && ntop >= 2 && lua_toboolean(L, 2)) {
 			fd = open(filp, O_RDONLY | O_CLOEXEC | O_LARGEFILE);
 			if (fd < 0) {
 				fd = errno;

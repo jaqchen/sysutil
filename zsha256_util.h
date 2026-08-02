@@ -26,8 +26,6 @@
 /* request definitions for uint8_t/uint32_t */
 #include <stdint.h>
 
-#include "sysutil_common.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -41,17 +39,17 @@ struct zsha256 {
 	uint32_t hashval[8];
 };
 
-void zsha256_init(struct zsha256 * hash) APPUTIL_ATTR;
+void zsha256_init(struct zsha256 * hash);
 
 int zsha256_update(struct zsha256 * hash,
-	const uint8_t * srcp, uint32_t srclen) APPUTIL_ATTR;
+	const uint8_t * srcp, uint32_t srclen);
 
 int zsha256_final(struct zsha256 * hash,
-	const uint8_t * srcp, uint32_t srclen) APPUTIL_ATTR;
+	const uint8_t * srcp, uint32_t srclen);
 
 const char * zsha256_hex(
 	char * pbuf, uint32_t buflen,
-	const struct zsha256 * hash) APPUTIL_ATTR;
+	const struct zsha256 * hash);
 
 #ifdef __cplusplus
 }
