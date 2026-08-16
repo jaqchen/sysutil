@@ -44,6 +44,7 @@
 #include <sys/syscall.h>
 #endif
 #include <sys/resource.h>
+#include <sys/ioctl.h>
 #include <endian.h>
 #include <net/if.h>
 #include <glob.h> /* request for glob function */
@@ -1744,6 +1745,64 @@ err0:
 	lua_pushnil(L);
 	lua_pushinteger(L, ret);
 	return 2;
+}
+
+static int sysutil_ioctl(lua_State * L)
+{
+	lua_Integer int_l;
+	int ntop, fd, ret;
+	unsigned long opval;
+	size_t vsize;
+	char * valnew;
+	const char * valptr;
+
+	int_l = (lua_Integer) -1l;
+	ntop = lua_gettop(L);
+	if (sysutil_isinteger(L, ntop, 1, &int_l) == 0 || int_l < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+	fd = (int) int_l;
+
+	int_l = (lua_Integer) -1l;
+	if (sysutil_isinteger(L, ntop, 2, &int_l) == 0 || int_l == -1l) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+	opval = (unsigned long) int_l;
+
+	vsize = 0;
+	valnew = NULL;
+	valptr = sysutil_isstring(L, ntop, 3, &vsize);
+	if (valptr && vsize > 0) {
+		valnew = (char *) malloc(vsize + 1);
+		if (valnew == NULL) {
+			lua_pushnil(L);
+			lua_pushinteger(L, ENOMEM);
+			return 2;
+		}
+		memcpy(valnew, valptr, vsize);
+		valnew[vsize] = '\0';
+	}
+
+	ret = ioctl(fd, opval, valnew);
+	if (ret < 0) {
+		ret = errno;
+		free(valnew);
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, ret);
+	if (valnew != NULL) {
+		lua_pushlstring(L, valnew, vsize);
+		free(valnew);
+		return 2;
+	}
+	return 1;
 }
 
 #define SYSUTIL_KILL       0
@@ -4273,6 +4332,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "getsockopt",     sysutil_getsockopt },
 	{ "glob",           sysutil_glob },
 	{ "inotify",        sysutil_inotify },
+	{ "ioctl",          sysutil_ioctl },
 	{ "kill",           sysutil_kill },
 	{ "killid",         sysutil_killid },      /* calls pthread_kill(...) */
 	{ "killpg",         sysutil_killpg },
