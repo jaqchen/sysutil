@@ -373,13 +373,17 @@ apputil_t apputil_new(const char * appname, unsigned int opts)
 		app->dftargs[idx] = NULL;
 
 	if (appname && appname[0]) {
-		app->appargs[0] = strdup(appname);
-		if (app->appargs[0] == NULL) {
+		size_t nlen = strlen(appname);
+		char * arg0 = (char *) malloc(nlen + 1);
+		if (arg0 == NULL) {
 			free(app);
 			app = NULL;
 			fprintf(stderr, "Error, failed to duplicate '%s'!\n", appname);
 			fflush(stderr);
 		} else {
+			memcpy(arg0, appname, nlen);
+			arg0[nlen] = '\0';
+			app->appargs[0] = arg0;
 			app->numargs = 1;
 		}
 	}
