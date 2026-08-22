@@ -40,9 +40,7 @@
 #include <netinet/tcp.h>
 #include <linux/netlink.h>
 
-#ifdef SYSUTIL_SYSCALL
 #include <sys/syscall.h>
-#endif
 #include <sys/resource.h>
 #include <sys/ioctl.h>
 #include <endian.h>
@@ -835,6 +833,30 @@ static int sysutil_chmod(lua_State * L)
 	return 1;
 }
 
+static int sysutil_chroot(lua_State * L)
+{
+	int ret;
+	const char * fpath;
+
+	fpath = sysutil_isstring(L, lua_gettop(L), 1, NULL);
+	if (fpath == NULL) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	ret = chroot(fpath);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
 static int sysutil_fcntl_common(lua_State * L,
 	int opgflag, int opsflag, int setflag)
 {
@@ -1390,7 +1412,7 @@ static int sysutil_getid(lua_State * L)
 
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
-#ifdef SYSUTIL_SYSCALL
+#if 1
 	pid = (unsigned long) syscall(SYS_gettid, 0ul, 0ul);
 #else
 	pid = (unsigned long) gettid();
@@ -2365,6 +2387,40 @@ static int sysutil_open(lua_State * L)
 	}
 
 	lua_pushinteger(L, fd);
+	return 1;
+}
+
+static int sysutil_pivot_root(lua_State * L)
+{
+	int ret;
+	size_t plen;
+	const char * new_path, * put_path;
+
+	plen = 0;
+	ret = lua_gettop(L);
+	new_path = sysutil_isstring(L, ret, 1, &plen);
+	if (new_path == NULL || plen == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	put_path = sysutil_isstring(L, ret, 2, &plen);
+	if (put_path == NULL || plen == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	ret = syscall(SYS_pivot_root, new_path, put_path);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, ret);
 	return 1;
 }
 
@@ -4314,6 +4370,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "checkip",        sysutil_checkip },
 	{ "checkmask",      sysutil_checkmask },
 	{ "chmod",          sysutil_chmod },
+	{ "chroot",         sysutil_chroot },
 	{ "cloexec",        sysutil_cloexec },
 	{ "close",          sysutil_close },
 	{ "connect",        sysutil_connect },
@@ -4347,6 +4404,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "nonblock",       sysutil_nonblock },
 	{ "nslookup",       sysutil_nslookup },
 	{ "open",           sysutil_open },
+	{ "pivot_root",     sysutil_pivot_root },
 	{ "poll",           sysutil_poll },
 	{ "read",           sysutil_read },
 	{ "readlink",       sysutil_readlink },
