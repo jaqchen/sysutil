@@ -56,6 +56,7 @@
 #ifndef IFNAMSIZ
   #define IFNAMSIZ 16
 #endif
+#define CMP_BUFSIZ 262144
 #define SYSCON_ADD(__lua, __topn, __sc_val) \
 	do { \
 		lua_pushinteger(__lua, (lua_Integer) __sc_val); \
@@ -940,6 +941,123 @@ static int sysutil_close(lua_State * L)
 	return 2;
 }
 
+static int sysutil_cmpfile(lua_State * L)
+{
+	int ntop, ret, identical;
+	uint64_t flen, csize;
+	struct stat s_src, s_dst;
+	const char * src, * dst;
+	int f_src, f_dst;
+	unsigned char * d_src, * d_dst;
+
+	identical = 1;
+	f_src = f_dst = -1;
+	d_src = d_dst = NULL;
+	ntop = lua_gettop(L);
+	src = sysutil_isstring(L, ntop, 1, NULL);
+	if (empty_str(src)) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	dst = sysutil_isstring(L, ntop, 2, NULL);
+	if (empty_str(dst)) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	memset(&s_src, 0, sizeof(s_src));
+	memset(&s_dst, 0, sizeof(s_dst));
+	ret = stat(src, &s_src);
+	if (ret == 0)
+		ret = stat(dst, &s_dst);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	if (!(S_ISREG(s_src.st_mode) && S_ISREG(s_dst.st_mode))) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EEXIST);
+		return 2;
+	}
+
+	if (s_src.st_dev == s_dst.st_dev &&
+		s_src.st_ino == s_dst.st_ino) {
+		lua_pushboolean(L, identical);
+		return 1;
+	}
+
+	if (s_src.st_size != s_dst.st_size) {
+		lua_pushboolean(L, 0);
+		return 1;
+	}
+
+	csize = 0;
+	flen = (uint64_t) s_src.st_size;
+	d_src = (unsigned char *) malloc(CMP_BUFSIZ);
+	d_dst = (unsigned char *) malloc(CMP_BUFSIZ);
+	if (d_src == NULL || d_dst == NULL) {
+		if (d_src != NULL)
+			free(d_src);
+		if (d_dst != NULL)
+			free(d_dst);
+		lua_pushnil(L);
+		lua_pushinteger(L, ENOMEM);
+		return 2;
+	}
+
+	f_src = open(src, O_RDONLY | O_CLOEXEC);
+	if (f_src < 0) {
+		ret = errno;
+		goto err0;
+	}
+
+	f_dst = open(dst, O_RDONLY | O_CLOEXEC);
+	if (f_dst < 0) {
+		ret = errno;
+		close(f_src);
+err0:
+		free(d_src);
+		free(d_dst);
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	while (csize < flen) {
+		ssize_t r0, r1;
+		uint64_t left;
+
+		left = flen - csize;
+		if (left > CMP_BUFSIZ)
+			left = CMP_BUFSIZ;
+
+		r0 = read(f_src, d_src, (size_t) left);
+		r1 = read(f_dst, d_dst, (size_t) left);
+		if (r0 <= 0 || r0 != r1) {
+			identical = 0;
+			break;
+		}
+
+		/* `memcmp is much faster than computing the SHA256SUM */
+		if (memcmp(d_src, d_dst, (size_t) r0) != 0) {
+			identical = 0;
+			break;
+		}
+		csize += (uint64_t) r0;
+	}
+
+	free(d_src); free(d_dst);
+	close(f_src); close(f_dst);
+	lua_pushboolean(L, identical);
+	return 1;
+}
+
 static int tcp_connect_poll(int sockfd, int timeout, int * errp)
 {
 	socklen_t slt;
@@ -1109,6 +1227,127 @@ error:
 	}
 	lua_pushinteger(L, ret);
 	return 1;
+}
+
+static int sysutil_copyfile(lua_State * L)
+{
+	int ntop, ret, error;
+	uint64_t flen, csize;
+	struct stat s_src, s_dst;
+	const char * src, * dst;
+	int f_src, f_dst;
+	unsigned char * d_src;
+
+	d_src = NULL;
+	f_src = f_dst = -1;
+	ntop = lua_gettop(L);
+	src = sysutil_isstring(L, ntop, 1, NULL);
+	if (empty_str(src)) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	dst = sysutil_isstring(L, ntop, 2, NULL);
+	if (empty_str(dst)) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	memset(&s_src, 0, sizeof(s_src));
+	ret = stat(src, &s_src);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	if (!S_ISREG(s_src.st_mode)) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EEXIST);
+		return 2;
+	}
+
+	memset(&s_dst, 0, sizeof(s_dst));
+	ret = stat(dst, &s_dst);
+	if (ret == 0 &&
+		s_src.st_dev == s_dst.st_dev &&
+		s_src.st_ino == s_dst.st_ino) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 1;
+	}
+
+	error = 0;
+	csize = 0;
+	flen = (uint64_t) s_src.st_size;
+	d_src = (unsigned char *) malloc(CMP_BUFSIZ);
+	if (d_src == NULL) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ENOMEM);
+		return 2;
+	}
+
+	f_src = open(src, O_RDONLY | O_CLOEXEC);
+	if (f_src < 0) {
+		ret = errno;
+		goto err0;
+	}
+
+	unlink(dst);
+	f_dst = open(dst, O_WRONLY | O_CLOEXEC | O_TRUNC | O_CREAT, 0644);
+	if (f_dst < 0) {
+		ret = errno;
+		close(f_src);
+err0:
+		free(d_src);
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	while (csize < flen) {
+		ssize_t r0, r1;
+		uint64_t left;
+
+		left = flen - csize;
+		if (left > CMP_BUFSIZ)
+			left = CMP_BUFSIZ;
+
+		r0 = read(f_src, d_src, (size_t) left);
+		if (r0 == 0)
+			break;
+		if (r0 < 0)
+			goto err1;
+
+		errno = 0;
+		r1 = write(f_dst, d_src, (size_t) r0);
+		if (r1 != r0) {
+err1:
+			error = errno;
+			if (error <= 0)
+				error = EIO;
+			break;
+		}
+		csize += (uint64_t) r0;
+	}
+
+	free(d_src);
+	close(f_src);
+	if (error != 0) {
+		close(f_dst);
+		unlink(dst);
+		lua_pushnil(L);
+		lua_pushinteger(L, error);
+		return 2;
+	} else {
+		fchmod(f_dst, s_src.st_mode);
+		close(f_dst);
+		lua_pushboolean(L, csize == flen);
+		return 1;
+	}
 }
 
 static int sysutil_common_delay(lua_State * L, int issec)
@@ -4373,7 +4612,9 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "chroot",         sysutil_chroot },
 	{ "cloexec",        sysutil_cloexec },
 	{ "close",          sysutil_close },
+	{ "cmpfile",        sysutil_cmpfile },
 	{ "connect",        sysutil_connect },
+	{ "copyfile",       sysutil_copyfile },
 	{ "delay",          sysutil_delay },
 	{ "dirname",        sysutil_dirname },
 	{ "exitval",        sysutil_exitval },
