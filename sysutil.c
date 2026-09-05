@@ -1507,6 +1507,28 @@ static int sysutil_dirname(lua_State * L)
 	return 2;
 }
 
+static int sysutil_exit(lua_State * L)
+{
+	int is_exit, ntop;
+	lua_Integer l_int;
+
+	l_int = 0;
+	is_exit = 0;
+	ntop = lua_gettop(L);
+	sysutil_isinteger(L, ntop, 1, &l_int);
+	if (ntop >= 2 && lua_type(L, 2) == LUA_TBOOLEAN)
+		is_exit = lua_toboolean(L, 2);
+
+	if (is_exit != 0)
+		_exit((int) l_int);
+	else
+		exit((int) l_int);
+
+	lua_pushnil(L);
+	lua_pushinteger(L, EINTR);
+	return 2;
+}
+
 static int sysutil_exitval(lua_State * L)
 {
 	int eval, ntop;
@@ -1587,6 +1609,30 @@ err0:
 	}
 
 	lua_pushinteger(L, ret);
+	return 1;
+}
+
+static int sysutil_fork(lua_State * L)
+{
+	pid_t p;
+	int is_vfork;
+
+	is_vfork = 0;
+	if (lua_gettop(L) >= 1 && lua_type(L, 1) == LUA_TBOOLEAN)
+		is_vfork = lua_toboolean(L, 1);
+
+	if (is_vfork != 0)
+		p = vfork();
+	else
+		p = fork();
+
+	if (p < 0) {
+		int error = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, error);
+		return 2;
+	}
+	sysutil_push_uint(L, (uint64_t) p);
 	return 1;
 }
 
@@ -4308,6 +4354,31 @@ static int sysutil_truncate(lua_State * L)
 	return 1;
 }
 
+static int sysutil_umask(lua_State * L)
+{
+	mode_t uval;
+	int doset, ntop;
+	lua_Integer l_int;
+
+	l_int = 0;
+	doset = 0;
+
+	ntop = lua_gettop(L);
+	sysutil_isinteger(L, ntop, 1, &l_int);
+	if (ntop >= 2) {
+		/* default to get the `umask value, unless ... */
+		doset = lua_toboolean(L, 2);
+	}
+
+	uval = umask((mode_t) l_int);
+	if (doset == 0) {
+		/* restore the original value */
+		umask(uval);
+	}
+	lua_pushinteger(L, (lua_Integer) uval);
+	return 1;
+}
+
 static int sysutil_unlink(lua_State * L)
 {
 	int idx, jdx;
@@ -4617,8 +4688,10 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "copyfile",       sysutil_copyfile },
 	{ "delay",          sysutil_delay },
 	{ "dirname",        sysutil_dirname },
+	{ "exit",           sysutil_exit },
 	{ "exitval",        sysutil_exitval },
 	{ "fcntl",          sysutil_fcntl },
+	{ "fork",           sysutil_fork },
 	{ "getcwd",         sysutil_getcwd },
 	{ "getenv",         sysutil_getenv },
 	{ "getid",          sysutil_getid },       /* calls pthread_self() */
@@ -4671,6 +4744,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "timedur",        sysutil_timedur },
 	{ "timestr",        sysutil_timestr },
 	{ "truncate",       sysutil_truncate },
+	{ "umask",          sysutil_umask },
 	{ "unlink",         sysutil_unlink },
 	{ "upmsec",         sysutil_upmsec },
 	{ "uptime",         sysutil_uptime },
