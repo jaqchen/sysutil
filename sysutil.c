@@ -4361,14 +4361,8 @@ static int sysutil_umask(lua_State * L)
 	lua_Integer l_int;
 
 	l_int = 0;
-	doset = 0;
-
 	ntop = lua_gettop(L);
-	sysutil_isinteger(L, ntop, 1, &l_int);
-	if (ntop >= 2) {
-		/* default to get the `umask value, unless ... */
-		doset = lua_toboolean(L, 2);
-	}
+	doset = sysutil_isinteger(L, ntop, 1, &l_int);
 
 	uval = umask((mode_t) l_int);
 	if (doset == 0) {
