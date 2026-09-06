@@ -1507,6 +1507,44 @@ static int sysutil_dirname(lua_State * L)
 	return 2;
 }
 
+static int sysutil_dup(lua_State * L)
+{
+	lua_Integer l_int;
+	int oldfd, ntop, ret;
+
+	ret = -1;
+	oldfd = -1;
+	l_int = (lua_Integer) -1l;
+
+	ntop = lua_gettop(L);
+	if (sysutil_isinteger(L, ntop, 1, &l_int) != 0)
+		oldfd = (int) l_int;
+	if (oldfd < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	if (sysutil_isinteger(L, ntop, 2, &l_int) != 0) {
+		int newfd = (int) l_int;
+		if (sysutil_isinteger(L, ntop, 3, &l_int) != 0) {
+			ret = dup3(oldfd, newfd, (int) l_int);
+		} else {
+			ret = dup2(oldfd, newfd);
+		}
+	} else {
+		ret = dup(oldfd);
+	}
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
 static int sysutil_exit(lua_State * L)
 {
 	int is_exit, ntop;
@@ -4682,6 +4720,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "copyfile",       sysutil_copyfile },
 	{ "delay",          sysutil_delay },
 	{ "dirname",        sysutil_dirname },
+	{ "dup",            sysutil_dup },
 	{ "exit",           sysutil_exit },
 	{ "exitval",        sysutil_exitval },
 	{ "fcntl",          sysutil_fcntl },
