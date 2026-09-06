@@ -1545,6 +1545,106 @@ static int sysutil_dup(lua_State * L)
 	return 1;
 }
 
+static int sysutil_execvp(lua_State * L)
+{
+	int argc, ntop, ret, idx;
+	char * args[APPUTIL_MAXARGS + 1];
+
+	argc = 0;
+	ret = LUA_TNONE;
+	ntop = lua_gettop(L);
+	if (ntop >= 1)
+		ret = lua_type(L, 1);
+
+	memset(args, 0, sizeof(char *) * (APPUTIL_MAXARGS + 1));
+	if (ret == LUA_TSTRING) {
+		for (idx = 1; idx <= ntop; ++idx) {
+			char * arg1;
+			size_t arglen;
+			const char * arg;
+
+			if (idx > APPUTIL_MAXARGS)
+				break;
+			if (lua_type(L, idx) != LUA_TSTRING)
+				break;
+
+			arglen = 0;
+			arg = lua_tolstring(L, idx, &arglen);
+			if (arg == NULL) {
+				fputs("Error, cannot fetch string from stack!\n", stderr);
+				fflush(stderr);
+				continue;
+			}
+
+			arg1 = (char *) malloc(arglen + 1);
+			if (arg1 == NULL) {
+				fprintf(stderr, "Error, system out of memory: %zu\n", arglen);
+				fflush(stderr);
+				break;
+			}
+
+			if (arglen > 0)
+				memcpy(arg1, arg, arglen);
+			arg1[arglen] = '\0';
+			args[argc++] = arg1;
+		}
+	} else if (ret == LUA_TTABLE) {
+		for (idx = 1; idx <= APPUTIL_MAXARGS; ++idx) {
+			char * arg1;
+			size_t arglen;
+			const char * arg;
+
+			lua_pushinteger(L, idx);
+			lua_gettable(L, 2);
+			if (lua_type(L, -1) != LUA_TSTRING)
+				break;
+
+			arglen = 0;
+			arg = lua_tolstring(L, -1, &arglen);
+			if (arg == NULL)
+				break;
+
+			arg1 = (char *) malloc(arglen + 1);
+			if (arg1 == NULL) {
+				fprintf(stderr, "Error, system out of memory: %zu\n", arglen);
+				fflush(stderr);
+				break;
+			}
+
+			if (arglen > 0)
+				memcpy(arg1, arg, arglen);
+			arg1[arglen] = '\0';
+			args[argc++] = arg1;
+			lua_settop(L, ntop);
+		}
+	} else {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	if (ntop != lua_gettop(L))
+		lua_settop(L, ntop);
+
+	if (argc == 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	execvp(args[0], args);
+	ret = errno;
+	for (idx = 0; idx < APPUTIL_MAXARGS; ++idx) {
+		if (args[idx] != NULL) {
+			free(args[idx]);
+			args[idx] = NULL;
+		}
+	}
+	lua_pushnil(L);
+	lua_pushinteger(L, ret);
+	return 2;
+}
+
 static int sysutil_exit(lua_State * L)
 {
 	int is_exit, ntop;
@@ -4721,6 +4821,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "delay",          sysutil_delay },
 	{ "dirname",        sysutil_dirname },
 	{ "dup",            sysutil_dup },
+	{ "execvp",         sysutil_execvp },
 	{ "exit",           sysutil_exit },
 	{ "exitval",        sysutil_exitval },
 	{ "fcntl",          sysutil_fcntl },
