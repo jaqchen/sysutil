@@ -1556,8 +1556,8 @@ static int sysutil_execvp(lua_State * L)
 	if (ntop >= 1)
 		ret = lua_type(L, 1);
 
-	memset(args, 0, sizeof(char *) * (APPUTIL_MAXARGS + 1));
 	if (ret == LUA_TSTRING) {
+		memset(args, 0, sizeof(char *) * (APPUTIL_MAXARGS + 1));
 		for (idx = 1; idx <= ntop; ++idx) {
 			char * arg1;
 			size_t arglen;
@@ -1589,6 +1589,7 @@ static int sysutil_execvp(lua_State * L)
 			args[argc++] = arg1;
 		}
 	} else if (ret == LUA_TTABLE) {
+		memset(args, 0, sizeof(char *) * (APPUTIL_MAXARGS + 1));
 		for (idx = 1; idx <= APPUTIL_MAXARGS; ++idx) {
 			char * arg1;
 			size_t arglen;
