@@ -5254,6 +5254,9 @@ int luaopen_sysutil(lua_State * L)
 	lua_pushinteger(L, APPUTIL_OPTION_RSTRIP);
 	lua_setfield(L, ntop, "OPT_RSTRIP");
 
+	lua_pushinteger(L, sizeof(void *));
+	lua_setfield(L, ntop, "SIZEOF_PTR");
+
 	/* whence for `lseek(2) system call */
 	SYSCON_ADD(L, ntop, SEEK_SET);
 	SYSCON_ADD(L, ntop, SEEK_CUR);
