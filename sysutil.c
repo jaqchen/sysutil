@@ -43,6 +43,7 @@
 #include <sys/syscall.h>
 #include <sys/resource.h>
 #include <sys/ioctl.h>
+#include <sys/random.h>
 #include <endian.h>
 #include <net/if.h>
 #include <glob.h> /* request for glob function */
@@ -1907,6 +1908,99 @@ static int sysutil_getppid(lua_State * L)
 
 	pid = getppid();
 	sysutil_push_int(L, (int64_t) pid);
+	return 1;
+}
+
+static int sysutil_getrandom(lua_State * L)
+{
+	lua_Integer int_l;
+	unsigned char * d;
+	int ntop, asint;
+	unsigned int gflags;
+	size_t dlen, maplen;
+	const char * mapstr;
+
+	asint = 0;
+	gflags = 0;
+	mapstr = NULL;
+	maplen = 0;
+	int_l = (lua_Integer) -1l;
+
+	ntop = lua_gettop(L);
+	sysutil_isinteger(L, ntop, 1, &int_l);
+	if (int_l <= 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	dlen = (size_t) int_l;
+	if (ntop >= 2) {
+		int type = lua_type(L, 2);
+		if (type == LUA_TBOOLEAN)
+			asint = lua_toboolean(L, 2);
+		else if (type == LUA_TSTRING)
+			mapstr = lua_tolstring(L, 2, &maplen);
+	}
+	d = (unsigned char *) malloc(dlen);
+	if (d == NULL) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ENOMEM);
+		return 2;
+	}
+
+	int_l = (lua_Integer) -1l;
+	sysutil_isinteger(L, ntop, 3, &int_l);
+	if (int_l > 0)
+		gflags = (unsigned int) int_l;
+	if (getrandom(d, dlen, gflags) < 0) {
+		int error = errno;
+		free(d);
+		lua_pushnil(L);
+		lua_pushinteger(L, error);
+		return 2;
+	}
+
+	if (asint != 0) {
+		size_t i;
+		uint64_t val = 0;
+		if (dlen >= 8) {
+			free(d);
+			lua_pushnil(L);
+			lua_pushinteger(L, EFAULT);
+			return 2;
+		}
+
+		for (i = 0; i < dlen; ++i)
+			val = (val << 8) | (uint64_t) d[i];
+		free(d);
+		sysutil_push_uint(L, val);
+		return 1;
+	}
+
+	if (mapstr && maplen >= 1) {
+		size_t i;
+		unsigned int mlen;
+		char * e = (char *) malloc(dlen);
+		if (e == NULL) {
+			lua_pushnil(L);
+			lua_pushinteger(L, ENOMEM);
+			free(d);
+			return 2;
+		}
+
+		mlen = (unsigned int) maplen;
+		for (i = 0; i < dlen; i++) {
+			unsigned int offs;
+			offs = (unsigned int) d[i];
+			e[i] = mapstr[offs % mlen];
+		}
+		lua_pushlstring(L, e, dlen);
+		free(e);
+	} else {
+		lua_pushlstring(L, (const char *) d, dlen);
+	}
+	free(d);
 	return 1;
 }
 
@@ -4833,6 +4927,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "getpeername",    sysutil_getpeername },
 	{ "getpid",         sysutil_getpid },
 	{ "getppid",        sysutil_getppid },
+	{ "getrandom",      sysutil_getrandom },
 	{ "getrlimit",      sysutil_getrlimit },
 	{ "getsockname",    sysutil_getsockname },
 	{ "getsockopt",     sysutil_getsockopt },
@@ -5207,6 +5302,8 @@ static const luaL_Reg sysutil_regs[] = {
 	{ placeholder,      NULL },
 	{ placeholder,      NULL },
 	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
 #endif
 	{ NULL,             NULL },
 };
@@ -5217,7 +5314,7 @@ int luaopen_sysutil(lua_State * L)
 	/* Expanded from macro `luaL_newlib. */
 	/* 95: reserve extra slots from following constants: */
 	luaL_checkversion(L);
-	lua_createtable(L, 0, 400);
+	lua_createtable(L, 0, 402);
 	luaL_setfuncs(L, sysutil_regs, 0);
 #else
 	luaL_register(L, "sysutil", sysutil_regs);
@@ -5261,6 +5358,10 @@ int luaopen_sysutil(lua_State * L)
 	SYSCON_ADD(L, ntop, SEEK_SET);
 	SYSCON_ADD(L, ntop, SEEK_CUR);
 	SYSCON_ADD(L, ntop, SEEK_END);
+
+	/* flags for `getrandom system call */
+	SYSCON_ADD(L, ntop, GRND_RANDOM);
+	SYSCON_ADD(L, ntop, GRND_NONBLOCK);
 
 	/* File open flags definitions */
 	SYSCON_ADD(L, ntop, O_RDONLY);
