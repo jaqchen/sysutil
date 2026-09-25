@@ -3707,6 +3707,22 @@ err1:
 	return 2;
 }
 
+static int sysutil_setsid(lua_State * L)
+{
+	pid_t sid;
+	int error;
+
+	sid = setsid();
+	if (sid < 0) {
+		error = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, error);
+		return 2;
+	}
+	sysutil_push_uint(L, (uint64_t) sid);
+	return 1;
+}
+
 static int sysutil_setsockopt(lua_State * L)
 {
 	socklen_t optlen;
@@ -4961,6 +4977,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "setenv",         sysutil_setenv },
 	{ "setname",        sysutil_setname },
 	{ "setrlimit",      sysutil_setrlimit },
+	{ "setsid",         sysutil_setsid },
 	{ "setsockopt",     sysutil_setsockopt },
 	{ "sha256",         sysutil_sha256 },
 	{ "signal",         sysutil_signal },
