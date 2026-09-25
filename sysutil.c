@@ -2636,15 +2636,120 @@ static int sysutil_mdelay(lua_State * L)
 	return sysutil_common_delay(L, 0);
 }
 
+static int sysutil_make_directory(char *path, long mode, int flags)
+{
+	mode_t cur_mask;
+	mode_t org_mask;
+	int error = 0;
+	char *s;
+	char c;
+	struct stat st;
+
+	if (path[0] == '/' && path[1] == '\0')
+		return 0;
+	if (path[0] == '.') {
+		if (path[1] == '\0')
+			return 0;
+	}
+
+	org_mask = cur_mask = (mode_t)-1L;
+	s = path;
+	while (1) {
+		c = '\0';
+
+		if (flags) {
+			/* Bypass leading non-'/'s and then subsequent '/'s */
+			while (*s) {
+				if (*s == '/') {
+					do {
+						++s;
+					} while (*s == '/');
+					c = *s; /* Save the current char */
+					*s = '\0'; /* and replace it with nul */
+					break;
+				}
+				++s;
+			}
+		}
+
+		if (c != '\0') {
+			/* Intermediate dirs: must have wx for user */
+			if (cur_mask == (mode_t)-1L) { /* wasn't done yet? */
+				mode_t new_mask;
+				org_mask = umask(0);
+				cur_mask = 0;
+				/* Clear u=wx in umask - this ensures
+				 * they won't be cleared on mkdir */
+				new_mask = (org_mask & ~(mode_t)0300);
+				if (new_mask != cur_mask) {
+					cur_mask = new_mask;
+					umask(new_mask);
+				}
+			}
+		} else {
+			/* Last component: uses original umask */
+			if (org_mask != cur_mask) {
+				cur_mask = org_mask;
+				umask(org_mask);
+			}
+		}
+
+		if (mkdir(path, 0777) < 0) {
+			/* If we failed for any other reason than the directory
+			 * already exists, return -1 with errno for the caller. */
+			if ((errno != EEXIST && errno != EISDIR)
+			 || !flags
+			 || ((stat(path, &st) < 0) || !S_ISDIR(st.st_mode))
+			) {
+				break;
+			}
+			/* Since the directory exists, don't attempt to change
+			 * permissions if it was the full target.  Note that
+			 * this is not an error condition. */
+			if (!c) {
+				goto ret0;
+			}
+		}
+
+		if (!c) {
+			/* Done.  If necessary, update perms on the newly
+			 * created directory.  Failure to update here _is_
+			 * an error. */
+			if (mode != -1) {
+				if (chmod(path, mode) < 0) {
+					break;
+				}
+			}
+			goto ret0;
+		}
+
+		/* Remove any inserted nul from the path (recursive mode) */
+		*s = c;
+	}
+
+	flags = -1;
+	error = errno;
+	goto ret;
+ret0:
+	flags = 0;
+ret:
+	if (org_mask != cur_mask)
+		umask(org_mask);
+	if (flags < 0)
+		errno = error;
+	return flags;
+}
+
 static int sysutil_mkdir(lua_State * L)
 {
-	mode_t mode;
-	int ret, ntop;
+	long mode;
+	int ret, ntop, error;
 	lua_Integer luai;
 	const char * dirp;
+	char * path;
 
 	dirp = NULL;
-	mode = 0755;
+	mode = -1;
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 
@@ -2658,11 +2763,19 @@ static int sysutil_mkdir(lua_State * L)
 
 	luai = 0;
 	if (sysutil_isinteger(L, ntop, 2, &luai))
-		mode = (mode_t) luai;
+		mode = (long) luai;
 
-	ret = mkdir(dirp, mode);
+	path = strdup(dirp);
+	if (path == NULL) {
+		lua_pushnil(L);
+		lua_pushinteger(L, ENOMEM);
+		return 2;
+	}
+	ret = sysutil_make_directory(path, mode,
+		ntop >= 3 && lua_toboolean(L, 3));
+	error = errno;
+	free(path);
 	if (ret < 0) {
-		int error = errno;
 		lua_pushnil(L);
 		lua_pushinteger(L, error);
 		errno = error;
