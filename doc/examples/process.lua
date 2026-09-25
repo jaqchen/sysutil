@@ -1,7 +1,6 @@
 #!/usr/bin/env lua
 
 local M = require 'sysutil'
-local C = require 'sysutil.syscon'
 
 local pid = M.getpid()
 assert(type(pid) == 'number',	'getpid: expected number')
@@ -66,10 +65,21 @@ assert(M.setname('sysutil-test') == 0, 'setname: expected 0')
 assert(M.zipstdio() == 0,        'zipstdio: expected 0')
 
 -- getrlimit(what)
-local cur, max = M.getrlimit(C.RLIMIT_NOFILE)
+local cur, max = M.getrlimit(M.RLIMIT_NOFILE)
 assert(type(cur) == 'number',    'getrlimit: cur expected number')
 assert(cur > 0,                  'getrlimit: cur should be > 0')
 
 -- setrlimit(what, cur [, max])
-assert(M.setrlimit(C.RLIMIT_NOFILE, cur, max) == 0, 'setrlimit: expected 0')
+assert(M.setrlimit(M.RLIMIT_NOFILE, cur, max) == 0, 'setrlimit: expected 0')
 
+-- setsid: the child starts a new session without a controlling terminal.
+local child, err = M.fork()
+assert(child, err)
+if child == 0 then
+	assert(M.setsid() == M.getpid(), 'setsid: expected new session')
+	assert(io.open('/dev/tty') == nil, 'setsid: controlling tty remains')
+	os.exit(0)
+end
+local _, child_status = M.waitpid(child)
+local child_ok, child_code = M.exitval(child_status)
+assert(child_ok and child_code == 0, 'setsid: child failed')
