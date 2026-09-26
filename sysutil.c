@@ -2676,6 +2676,7 @@ static int create_dirs(char ** dirs, int dnum, long mode, size_t dirlen)
 	if (dpath == NULL)
 		return -1;
 
+	dpath[0] = '\0';
 	/* the first directory should be current directory or '/' */
 	strncat(dpath, dirs[0], dirlen - curlen);
 	curlen = strlen(dpath);
