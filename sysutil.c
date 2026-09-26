@@ -2718,7 +2718,7 @@ static int create_dirs(char ** dirs, int dnum, mode_t mode, size_t dirlen)
 		if (ret < 0) {
 			error = errno;
 			free(dpath);
-			errno = errno;
+			errno = error;
 			return -1;
 		}
 	}
