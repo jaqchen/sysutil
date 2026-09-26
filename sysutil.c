@@ -163,6 +163,22 @@ static int sysutil_isinteger(lua_State * L,
 	return 0;
 }
 
+/* duplicate `dpath via `malloc/memcpy, instead of `strdup */
+static char * sysutil_strdup(const char * s, size_t len)
+{
+	char * t;
+
+	if (len == 0)
+		len = strlen(s);
+	t = (char *) malloc(len + 1);
+	if (t == NULL)
+		return t;
+	if (len > 0)
+		memcpy(t, s, len);
+	t[len] = '\0';
+	return t;
+}
+
 static int sysutil_pushaddr(lua_State * L, char * addr, socklen_t sock_len, int numret)
 {
 	char str_a[96];
@@ -2636,108 +2652,155 @@ static int sysutil_mdelay(lua_State * L)
 	return sysutil_common_delay(L, 0);
 }
 
-static int sysutil_make_directory(char *path, long mode, int flags)
+static void free_stra(char * * str_array, int array_num)
 {
-	mode_t cur_mask;
-	mode_t org_mask;
-	int error = 0;
-	char *s;
-	char c;
-	struct stat st;
+	int i;
+	for (i = 0; i < array_num; ++i) {
+		if (str_array[i] != NULL) {
+			free(str_array[i]);
+			str_array[i] = NULL;
+		}
+	}
+}
 
-	if (path[0] == '/' && path[1] == '\0')
-		return 0;
-	if (path[0] == '.') {
-		if (path[1] == '\0')
-			return 0;
+static int create_dirs(char ** dirs, int dnum, long mode, size_t dirlen)
+{
+	int ret, num;
+	char * dpath;
+	size_t curlen;
+	struct stat dst;
+
+	curlen = 0;
+	dirlen += 128;
+	dpath = (char *) malloc(dirlen);
+	if (dpath == NULL)
+		return -1;
+
+	/* the first directory should be current directory or '/' */
+	strncat(dpath, dirs[0], dirlen - curlen);
+	curlen = strlen(dpath);
+
+	for (num = 1; num < dnum; ++num) {
+		int error;
+		size_t len;
+		const char * d;
+
+		len = 0;
+		d = dirs[num];
+		if (d != NULL)
+			len = strlen(d);
+		if (len == 0)
+			break;
+
+		dpath[curlen++] = '/';
+		memcpy(dpath + curlen, d, len);
+		curlen += len;
+		dpath[curlen] = '\0';
+
+		dst.st_mode = 0;
+		ret = stat(dpath, &dst);
+		if (ret < 0) {
+			error = errno;
+			if (error != ENOENT) {
+				free(dpath);
+				errno = error;
+				return -1;
+			}
+			/* fprintf(stdout, "Creating directory: %s...\n", dpath);
+			fflush(stdout); */
+			ret = mkdir(dpath, (mode_t) mode);
+		} else if (!S_ISDIR(dst.st_mode)) {
+			free(dpath);
+			errno = ENOTDIR;
+			return -1;
+		}
+
+		if (ret < 0) {
+			error = errno;
+			free(dpath);
+			errno = errno;
+			return -1;
+		}
 	}
 
-	org_mask = cur_mask = (mode_t)-1L;
-	s = path;
-	while (1) {
-		c = '\0';
+	free(dpath);
+	return 0;
+}
 
-		if (flags) {
-			/* Bypass leading non-'/'s and then subsequent '/'s */
-			while (*s) {
-				if (*s == '/') {
-					do {
-						++s;
-					} while (*s == '/');
-					c = *s; /* Save the current char */
-					*s = '\0'; /* and replace it with nul */
-					break;
-				}
-				++s;
-			}
-		}
+static int split_dirs(const char * dpath, char ** pdirs, int maxdirs)
+{
+	int dnum;
+	size_t dlen;
+	char origdir[2];
+	char * path, * next;
 
-		if (c != '\0') {
-			/* Intermediate dirs: must have wx for user */
-			if (cur_mask == (mode_t)-1L) { /* wasn't done yet? */
-				mode_t new_mask;
-				org_mask = umask(0);
-				cur_mask = 0;
-				/* Clear u=wx in umask - this ensures
-				 * they won't be cleared on mkdir */
-				new_mask = (org_mask & ~(mode_t)0300);
-				if (new_mask != cur_mask) {
-					cur_mask = new_mask;
-					umask(new_mask);
-				}
-			}
-		} else {
-			/* Last component: uses original umask */
-			if (org_mask != cur_mask) {
-				cur_mask = org_mask;
-				umask(org_mask);
-			}
-		}
+	dlen = strlen(dpath);
+	path = sysutil_strdup(dpath, dlen);
+	if (path == NULL)
+		return -1;
 
-		if (mkdir(path, 0777) < 0) {
-			/* If we failed for any other reason than the directory
-			 * already exists, return -1 with errno for the caller. */
-			if ((errno != EEXIST && errno != EISDIR)
-			 || !flags
-			 || ((stat(path, &st) < 0) || !S_ISDIR(st.st_mode))
-			) {
+	origdir[0] = path[0] != '/' ? '.' : '/';
+	origdir[1] = '\0';
+	pdirs[0] = sysutil_strdup(origdir, 1);
+	if (pdirs[0] == NULL) {
+		free(path);
+		errno = ENOMEM;
+		return -1;
+	}
+
+	dnum = 1;
+	next = path;
+	for (;;) {
+		char cha;
+		char * nextdir;
+
+		/* consume consecutive '/' characters */
+		for (;;) {
+			cha = *next;
+			if (cha != '/')
 				break;
-			}
-			/* Since the directory exists, don't attempt to change
-			 * permissions if it was the full target.  Note that
-			 * this is not an error condition. */
-			if (!c) {
-				goto ret0;
-			}
+			next++;
+		}
+		if (cha == '\0')
+			break;
+
+		/* next directory name starts here */
+		nextdir = next;
+
+		/* skip until '/' character is found */
+		for (;;) {
+			cha = *next;
+			if (cha == '/' || cha == '\0')
+				break;
+			next++;
 		}
 
-		if (!c) {
-			/* Done.  If necessary, update perms on the newly
-			 * created directory.  Failure to update here _is_
-			 * an error. */
-			if (mode != -1) {
-				if (chmod(path, mode) < 0) {
-					break;
-				}
-			}
-			goto ret0;
+		pdirs[dnum] = sysutil_strdup(nextdir, (size_t) (next - nextdir));
+		if (pdirs[dnum] == NULL) {
+			free(path);
+			free_stra(pdirs, dnum);
+			errno = ENOMEM;
+			return -1;
 		}
+		/* fprintf(stdout, "Split directory: %d => %s\n", dnum, pdirs[dnum]);
+		fflush(stdout); */
 
-		/* Remove any inserted nul from the path (recursive mode) */
-		*s = c;
+		dnum++;
+		if (dnum >= maxdirs) {
+			if (cha != '\0') {
+				free(path);
+				free_stra(pdirs, dnum);
+				errno = ENAMETOOLONG;
+				return -1;
+			}
+			break;
+		}
+		if (cha == '\0')
+			break;
 	}
 
-	flags = -1;
-	error = errno;
-	goto ret;
-ret0:
-	flags = 0;
-ret:
-	if (org_mask != cur_mask)
-		umask(org_mask);
-	if (flags < 0)
-		errno = error;
-	return flags;
+	free(path);
+	return dnum;
 }
 
 static int sysutil_mkdir(lua_State * L)
@@ -2746,15 +2809,18 @@ static int sysutil_mkdir(lua_State * L)
 	int ret, ntop, error;
 	lua_Integer luai;
 	const char * dirp;
-	char * path;
+	char * dirs[100];
+	size_t maxlen;
 
+	error = 0;
 	dirp = NULL;
-	mode = -1;
+	mode = 0755;
+	maxlen = 0;
 	if (sysutil_checkstack(L, 2) < 0)
 		return 0;
 
 	ntop = lua_gettop(L);
-	dirp = sysutil_isstring(L, ntop, 1, NULL);
+	dirp = sysutil_isstring(L, ntop, 1, &maxlen);
 	if (empty_str(dirp)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EFAULT);
@@ -2764,26 +2830,39 @@ static int sysutil_mkdir(lua_State * L)
 	luai = 0;
 	if (sysutil_isinteger(L, ntop, 2, &luai))
 		mode = (long) luai;
-
-	path = strdup(dirp);
-	if (path == NULL) {
-		lua_pushnil(L);
-		lua_pushinteger(L, ENOMEM);
-		return 2;
+	if (ntop <= 2 || lua_toboolean(L, 3) == 0) {
+		ret = mkdir(dirp, (mode_t) mode);
+		if (ret < 0) {
+			error = errno;
+			lua_pushnil(L);
+			lua_pushinteger(L, error);
+			return 2;
+		}
+		lua_pushinteger(L, ret);
+		return 1;
 	}
-	ret = sysutil_make_directory(path, mode,
-		ntop >= 3 && lua_toboolean(L, 3));
-	error = errno;
-	free(path);
+
+	/* we need to recursively create parent directories */
+	memset(dirs, 0, 100 * sizeof(char *));
+
+	/* split the directory first */
+	ret = split_dirs(dirp, dirs, 99);
 	if (ret < 0) {
+		error = errno;
 		lua_pushnil(L);
 		lua_pushinteger(L, error);
-		errno = error;
 		return 2;
 	}
 
-	lua_pushinteger(L, ret);
-	return 1;
+	/* create the list of directories one by one */
+	ret = create_dirs(dirs, 99, mode, maxlen);
+	if (ret < 0) {
+		error = errno;
+		lua_pushnil(L);
+	}
+	lua_pushinteger(L, (ret < 0) ? error : ret);
+	free_stra(dirs, 99);
+	return (ret < 0) ? 2 : 1;
 }
 
 static int sysutil_mkfifo(lua_State * L)
