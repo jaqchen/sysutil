@@ -2052,6 +2052,28 @@ static int sysutil_getrlimit(lua_State * L)
 	return 2;
 }
 
+static int sysutil_getsid(lua_State * L)
+{
+	pid_t pid;
+	lua_Integer int_l;
+
+	int_l = 0;
+	sysutil_isinteger(L, lua_gettop(L), 1, &int_l);
+	if (int_l < 0)
+		int_l = 0;
+
+	pid = getsid((pid_t) int_l);
+	if (pid < 0) {
+		int error = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, error);
+		return 2;
+	}
+
+	sysutil_push_uint(L, (uint64_t) pid);
+	return 1;
+}
+
 static int sysutil_getsockname(lua_State * L)
 {
 	socklen_t slt;
@@ -2829,7 +2851,7 @@ static int sysutil_mkdir(lua_State * L)
 	if (sysutil_isinteger(L, ntop, 2, &luai))
 		mode = (mode_t) luai;
 	if (ntop <= 2 || lua_toboolean(L, 3) == 0) {
-		ret = mkdir(dirp, (mode_t) mode);
+		ret = mkdir(dirp, mode);
 		if (ret < 0) {
 			error = errno;
 			lua_pushnil(L);
@@ -5135,6 +5157,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "getppid",        sysutil_getppid },
 	{ "getrandom",      sysutil_getrandom },
 	{ "getrlimit",      sysutil_getrlimit },
+	{ "getsid",         sysutil_getsid },
 	{ "getsockname",    sysutil_getsockname },
 	{ "getsockopt",     sysutil_getsockopt },
 	{ "glob",           sysutil_glob },
