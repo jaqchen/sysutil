@@ -2663,7 +2663,7 @@ static void free_stra(char * * str_array, int array_num)
 	}
 }
 
-static int create_dirs(char ** dirs, int dnum, long mode, size_t dirlen)
+static int create_dirs(char ** dirs, int dnum, mode_t mode, size_t dirlen)
 {
 	int ret, num;
 	char * dpath;
@@ -2676,9 +2676,8 @@ static int create_dirs(char ** dirs, int dnum, long mode, size_t dirlen)
 	if (dpath == NULL)
 		return -1;
 
-	dpath[0] = '\0';
 	/* the first directory should be current directory or '/' */
-	strncat(dpath, dirs[0], dirlen - curlen);
+	strncpy(dpath, dirs[0], dirlen);
 	curlen = strlen(dpath);
 
 	for (num = 1; num < dnum; ++num) {
@@ -2709,7 +2708,7 @@ static int create_dirs(char ** dirs, int dnum, long mode, size_t dirlen)
 			}
 			/* fprintf(stdout, "Creating directory: %s...\n", dpath);
 			fflush(stdout); */
-			ret = mkdir(dpath, (mode_t) mode);
+			ret = mkdir(dpath, mode);
 		} else if (!S_ISDIR(dst.st_mode)) {
 			free(dpath);
 			errno = ENOTDIR;
@@ -2728,14 +2727,12 @@ static int create_dirs(char ** dirs, int dnum, long mode, size_t dirlen)
 	return 0;
 }
 
-static int split_dirs(const char * dpath, char ** pdirs, int maxdirs)
+static int split_dirs(const char * dpath, size_t dlen, char ** pdirs, int maxdirs)
 {
 	int dnum;
-	size_t dlen;
 	char origdir[2];
 	char * path, * next;
 
-	dlen = strlen(dpath);
 	path = sysutil_strdup(dpath, dlen);
 	if (path == NULL)
 		return -1;
@@ -2806,7 +2803,7 @@ static int split_dirs(const char * dpath, char ** pdirs, int maxdirs)
 
 static int sysutil_mkdir(lua_State * L)
 {
-	long mode;
+	mode_t mode;
 	int ret, ntop, error;
 	lua_Integer luai;
 	const char * dirp;
@@ -2830,7 +2827,7 @@ static int sysutil_mkdir(lua_State * L)
 
 	luai = 0;
 	if (sysutil_isinteger(L, ntop, 2, &luai))
-		mode = (long) luai;
+		mode = (mode_t) luai;
 	if (ntop <= 2 || lua_toboolean(L, 3) == 0) {
 		ret = mkdir(dirp, (mode_t) mode);
 		if (ret < 0) {
@@ -2847,7 +2844,7 @@ static int sysutil_mkdir(lua_State * L)
 	memset(dirs, 0, 100 * sizeof(char *));
 
 	/* split the directory first */
-	ret = split_dirs(dirp, dirs, 99);
+	ret = split_dirs(dirp, maxlen, dirs, 99);
 	if (ret < 0) {
 		error = errno;
 		lua_pushnil(L);
