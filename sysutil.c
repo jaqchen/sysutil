@@ -44,6 +44,7 @@
 #include <sys/resource.h>
 #include <sys/ioctl.h>
 #include <sys/random.h>
+#include <sys/utsname.h>
 #include <endian.h>
 #include <net/if.h>
 #include <glob.h> /* request for glob function */
@@ -4834,6 +4835,43 @@ static int sysutil_umask(lua_State * L)
 	return 1;
 }
 
+static int sysutil_uname(lua_State * L)
+{
+	int ret;
+	struct utsname uts;
+
+	memset(&uts, 0, sizeof(uts));
+	ret = uname(&uts);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_createtable(L, 0, 5);
+	ret = lua_gettop(L);
+
+	lua_pushstring(L, uts.sysname);
+	lua_setfield(L, ret, "sysname");
+
+	lua_pushstring(L, uts.nodename);
+	lua_setfield(L, ret, "nodename");
+
+	lua_pushstring(L, uts.release);
+	lua_setfield(L, ret, "release");
+
+	lua_pushstring(L, uts.version);
+	lua_setfield(L, ret, "version");
+
+	lua_pushstring(L, uts.machine);
+	lua_setfield(L, ret, "machine");
+
+	if (lua_gettop(L) != ret)
+		lua_settop(L, ret);
+	return 1;
+}
+
 static int sysutil_unlink(lua_State * L)
 {
 	int idx, jdx;
@@ -5205,6 +5243,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "timestr",        sysutil_timestr },
 	{ "truncate",       sysutil_truncate },
 	{ "umask",          sysutil_umask },
+	{ "uname",          sysutil_uname },
 	{ "unlink",         sysutil_unlink },
 	{ "upmsec",         sysutil_upmsec },
 	{ "uptime",         sysutil_uptime },
