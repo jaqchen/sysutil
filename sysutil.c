@@ -180,6 +180,17 @@ static char * sysutil_strdup(const char * s, size_t len)
 	return t;
 }
 
+static void free_stra(char * * str_array, int array_num)
+{
+	int i;
+	for (i = 0; i < array_num; ++i) {
+		if (str_array[i] != NULL) {
+			free(str_array[i]);
+			str_array[i] = NULL;
+		}
+	}
+}
+
 static int sysutil_pushaddr(lua_State * L, char * addr, socklen_t sock_len, int numret)
 {
 	char str_a[96];
@@ -1653,12 +1664,7 @@ static int sysutil_execvp(lua_State * L)
 
 	execvp(args[0], args);
 	ret = errno;
-	for (idx = 0; idx < APPUTIL_MAXARGS; ++idx) {
-		if (args[idx] != NULL) {
-			free(args[idx]);
-			args[idx] = NULL;
-		}
-	}
+	free_stra(args, APPUTIL_MAXARGS);
 	lua_pushnil(L);
 	lua_pushinteger(L, ret);
 	return 2;
@@ -2673,17 +2679,6 @@ static int sysutil_lseek(lua_State * L)
 static int sysutil_mdelay(lua_State * L)
 {
 	return sysutil_common_delay(L, 0);
-}
-
-static void free_stra(char * * str_array, int array_num)
-{
-	int i;
-	for (i = 0; i < array_num; ++i) {
-		if (str_array[i] != NULL) {
-			free(str_array[i]);
-			str_array[i] = NULL;
-		}
-	}
 }
 
 static int create_dirs(char ** dirs, int dnum, mode_t mode, size_t dirlen)
