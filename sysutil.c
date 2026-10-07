@@ -45,6 +45,7 @@
 #include <sys/ioctl.h>
 #include <sys/random.h>
 #include <sys/utsname.h>
+#include <sys/mount.h>
 #include <endian.h>
 #include <net/if.h>
 #include <glob.h> /* request for glob function */
@@ -2917,6 +2918,50 @@ static int sysutil_mkfifo(lua_State * L)
 	return 1;
 }
 
+static int sysutil_mount(lua_State * L)
+{
+	lua_Integer mflags;
+	int ret, ntop;
+	const char * src, * dst, * fstype;
+	const char * optstr;
+
+	src = dst = NULL;
+	fstype = NULL;
+	mflags = 0;
+	ntop = lua_gettop(L);
+
+	src = sysutil_isstring(L, ntop, 1, NULL);
+	if (empty_str(src))
+		goto err0;
+
+	dst = sysutil_isstring(L, ntop, 2, NULL);
+	if (empty_str(dst))
+		goto err0;
+
+	fstype = sysutil_isstring(L, ntop, 3, NULL);
+	if (empty_str(fstype)) {
+err0:
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	if (sysutil_isinteger(L, ntop, 4, &mflags) == 0)
+		mflags = 0;
+
+	optstr = sysutil_isstring(L, ntop, 5, NULL);
+	ret = mount(src, dst, fstype, (unsigned long) mflags, optstr);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
 static int sysutil_mountpoint(lua_State * L)
 {
 	int ntop;
@@ -4830,6 +4875,40 @@ static int sysutil_umask(lua_State * L)
 	return 1;
 }
 
+static int sysutil_umount(lua_State * L)
+{
+	const char * mp;
+	int ntop, ret;
+	lua_Integer uflags;
+
+	uflags = 0;
+	ntop = lua_gettop(L);
+	mp = sysutil_isstring(L, ntop, 1, NULL);
+	if (empty_str(mp)) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	if (sysutil_isinteger(L, ntop, 2, &uflags) == 0)
+		uflags = 0;
+
+	if (uflags == 0)
+		ret = umount(mp);
+	else
+		ret = umount2(mp, (int) uflags);
+
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
 static int sysutil_uname(lua_State * L)
 {
 	int ret;
@@ -5205,6 +5284,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "mdelay",         sysutil_mdelay },
 	{ "mkdir",          sysutil_mkdir },
 	{ "mkfifo",         sysutil_mkfifo },
+	{ "mount",          sysutil_mount },
 	{ "mountpoint",     sysutil_mountpoint },
 	{ "multicast",      sysutil_multicast },
 	{ "nonblock",       sysutil_nonblock },
@@ -5238,6 +5318,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "timestr",        sysutil_timestr },
 	{ "truncate",       sysutil_truncate },
 	{ "umask",          sysutil_umask },
+	{ "umount",         sysutil_umount },
 	{ "uname",          sysutil_uname },
 	{ "unlink",         sysutil_unlink },
 	{ "upmsec",         sysutil_upmsec },
@@ -5246,6 +5327,31 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "write",          sysutil_write },
 	{ "zipstdio",       sysutil_zipstdio },
 #if LUA_VERSION_NUM <= 501
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
+	{ placeholder,      NULL },
 	{ placeholder,      NULL },
 	{ placeholder,      NULL },
 	{ placeholder,      NULL },
@@ -5578,7 +5684,7 @@ int luaopen_sysutil(lua_State * L)
 	/* Expanded from macro `luaL_newlib. */
 	/* 95: reserve extra slots from following constants: */
 	luaL_checkversion(L);
-	lua_createtable(L, 0, 402);
+	lua_createtable(L, 0, 432);
 	luaL_setfuncs(L, sysutil_regs, 0);
 #else
 	luaL_register(L, "sysutil", sysutil_regs);
@@ -5797,6 +5903,33 @@ int luaopen_sysutil(lua_State * L)
 	SYSCON_ADD(L, ntop, F_NOTIFY);
 	SYSCON_ADD(L, ntop, F_SETPIPE_SZ);
 	SYSCON_ADD(L, ntop, F_GETPIPE_SZ);
+
+	/* flags for umount/mount system calls */
+	SYSCON_ADD(L, ntop, MNT_FORCE);
+	SYSCON_ADD(L, ntop, MNT_DETACH);
+	SYSCON_ADD(L, ntop, MNT_EXPIRE);
+	SYSCON_ADD(L, ntop, UMOUNT_NOFOLLOW);
+	SYSCON_ADD(L, ntop, MS_DIRSYNC);
+	SYSCON_ADD(L, ntop, MS_LAZYTIME);
+	SYSCON_ADD(L, ntop, MS_MANDLOCK);
+	SYSCON_ADD(L, ntop, MS_NOATIME);
+	SYSCON_ADD(L, ntop, MS_NODEV);
+	SYSCON_ADD(L, ntop, MS_NODIRATIME);
+	SYSCON_ADD(L, ntop, MS_NOEXEC);
+	SYSCON_ADD(L, ntop, MS_NOSUID);
+	SYSCON_ADD(L, ntop, MS_RDONLY);
+	SYSCON_ADD(L, ntop, MS_REC);
+	SYSCON_ADD(L, ntop, MS_RELATIME);
+	SYSCON_ADD(L, ntop, MS_SILENT);
+	SYSCON_ADD(L, ntop, MS_STRICTATIME);
+	SYSCON_ADD(L, ntop, MS_SYNCHRONOUS);
+	SYSCON_ADD(L, ntop, MS_NOSYMFOLLOW);
+	SYSCON_ADD(L, ntop, MS_SHARED);
+	SYSCON_ADD(L, ntop, MS_PRIVATE);
+	SYSCON_ADD(L, ntop, MS_SLAVE);
+	SYSCON_ADD(L, ntop, MS_UNBINDABLE);
+	SYSCON_ADD(L, ntop, MS_MOVE);
+	SYSCON_ADD(L, ntop, MS_REMOUNT);
 
 	/* error constants */
 	SYSCON_ADD(L, ntop, EPERM);
