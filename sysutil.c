@@ -2925,27 +2925,19 @@ static int sysutil_mount(lua_State * L)
 	const char * src, * dst, * fstype;
 	const char * optstr;
 
-	src = dst = NULL;
 	fstype = NULL;
 	mflags = 0;
 	ntop = lua_gettop(L);
 
 	src = sysutil_isstring(L, ntop, 1, NULL);
-	if (empty_str(src))
-		goto err0;
-
 	dst = sysutil_isstring(L, ntop, 2, NULL);
-	if (empty_str(dst))
-		goto err0;
-
-	fstype = sysutil_isstring(L, ntop, 3, NULL);
-	if (empty_str(fstype)) {
-err0:
+	if (empty_str(dst)) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
 		return 2;
 	}
 
+	fstype = sysutil_isstring(L, ntop, 3, NULL);
 	if (sysutil_isinteger(L, ntop, 4, &mflags) == 0)
 		mflags = 0;
 
