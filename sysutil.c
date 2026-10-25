@@ -5915,7 +5915,9 @@ int luaopen_sysutil(lua_State * L)
 	SYSCON_ADD(L, ntop, MS_SILENT);
 	SYSCON_ADD(L, ntop, MS_STRICTATIME);
 	SYSCON_ADD(L, ntop, MS_SYNCHRONOUS);
+#ifdef MS_NOSYMFOLLOW
 	SYSCON_ADD(L, ntop, MS_NOSYMFOLLOW);
+#endif
 	SYSCON_ADD(L, ntop, MS_SHARED);
 	SYSCON_ADD(L, ntop, MS_PRIVATE);
 	SYSCON_ADD(L, ntop, MS_SLAVE);
