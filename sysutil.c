@@ -3153,6 +3153,29 @@ static int sysutil_open(lua_State * L)
 	return 1;
 }
 
+static int sysutil_pipe(lua_State * L)
+{
+	lua_Integer luai;
+	int fds[2], ret;
+
+	luai = 0;
+	if (sysutil_isinteger(L, lua_gettop(L), 1, &luai) == 0)
+		luai = 0;
+
+	fds[0] = fds[1] = -1;
+	ret = pipe2(fds, (int) luai);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, (lua_Integer) fds[0]);
+	lua_pushinteger(L, (lua_Integer) fds[1]);
+	return 2;
+}
+
 static int sysutil_pivot_root(lua_State * L)
 {
 	int ret;
@@ -4248,6 +4271,45 @@ error:
 	return 1;
 }
 
+static int sysutil_socketpair(lua_State * L)
+{
+	lua_Integer luai;
+	int fds[2], ret, ntop;
+	int domain, type, proto;
+
+	domain = type = proto = -1;
+
+	ntop = lua_gettop(L);
+	luai = (lua_Integer) -1l;
+
+	if (sysutil_isinteger(L, ntop, 1, &luai))
+		domain = (int) luai;
+	if (sysutil_isinteger(L, ntop, 2, &luai))
+		type = (int) luai;
+	if (sysutil_isinteger(L, ntop, 3, &luai))
+		proto = (int) luai;
+
+	/* TODO: negative values are not valid ? */
+	if (domain < 0 || type < 0 || proto < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	fds[0] = fds[1] = -1;
+	ret = socketpair(domain, type, proto, fds);
+	if (ret < 0) {
+		ret = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, ret);
+		return 2;
+	}
+
+	lua_pushinteger(L, (lua_Integer) fds[0]);
+	lua_pushinteger(L, (lua_Integer) fds[1]);
+	return 2;
+}
+
 static int sysutil_socktime(lua_State * L)
 {
 	lua_Integer l_int;
@@ -4680,6 +4742,53 @@ static int sysutil_tcpcheck(lua_State * L)
 	lua_pushinteger(L, rval);
 	return 1;
 }
+
+#ifdef _GNU_SOURCE
+static int sysutil_tee(lua_State * L)
+{
+	ssize_t ret;
+	size_t teelen;
+	int ntop, fdin, fdout, flags;
+	lua_Integer luai;
+
+	flags = 0;
+	fdin = fdout = -1;
+
+	luai = 0;
+	ntop = lua_gettop(L);
+	if (sysutil_isinteger(L, ntop, 1, &luai))
+		fdin = (int) luai;
+	if (sysutil_isinteger(L, ntop, 2, &luai))
+		fdout = (int) luai;
+	if (fdin < 0 || fdout < 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	luai = 0;
+	if (sysutil_isinteger(L, ntop, 3, &luai) == 0 || luai <= 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+	teelen = (size_t) luai;
+
+	if (sysutil_isinteger(L, ntop, 4, &luai))
+		flags = (int) luai;
+
+	ret = tee(fdin, fdout, teelen, flags);
+	if (ret < 0) {
+		flags = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, flags);
+		return 2;
+	}
+
+	sysutil_push_int(L, (int64_t) ret);
+	return 1;
+}
+#endif
 
 static int sysutil_timedur(lua_State * L)
 {
@@ -5282,6 +5391,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "nonblock",       sysutil_nonblock },
 	{ "nslookup",       sysutil_nslookup },
 	{ "open",           sysutil_open },
+	{ "pipe",           sysutil_pipe },
 	{ "pivot_root",     sysutil_pivot_root },
 	{ "poll",           sysutil_poll },
 	{ "read",           sysutil_read },
@@ -5300,12 +5410,16 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "sha256",         sysutil_sha256 },
 	{ "signal",         sysutil_signal },
 	{ "socket",         sysutil_socket },
+	{ "socketpair",     sysutil_socketpair },
 	{ "socktime",       sysutil_socktime },
 	{ "stat",           sysutil_stat },
 	{ "strerror",       sysutil_strerror },
 	{ "symlink",        sysutil_symlink },
 	{ "sync",           sysutil_sync },
 	{ "tcpcheck",       sysutil_tcpcheck },
+#ifdef _GNU_SOURCE
+	{ "tee",            sysutil_tee },
+#endif
 	{ "timedur",        sysutil_timedur },
 	{ "timestr",        sysutil_timestr },
 	{ "truncate",       sysutil_truncate },
