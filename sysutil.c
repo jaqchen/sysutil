@@ -33,6 +33,7 @@
 #include <sys/prctl.h>
 #include <sys/file.h>
 #include <sys/inotify.h>
+#include <sys/sendfile.h>
 #include <termios.h>
 #include <libgen.h>
 #include <arpa/inet.h>
@@ -1266,9 +1267,7 @@ static int sysutil_copyfile(lua_State * L)
 	struct stat s_src, s_dst;
 	const char * src, * dst;
 	int f_src, f_dst;
-	unsigned char * d_src;
 
-	d_src = NULL;
 	f_src = f_dst = -1;
 	ntop = lua_gettop(L);
 	src = sysutil_isstring(L, ntop, 1, NULL);
@@ -1307,19 +1306,10 @@ static int sysutil_copyfile(lua_State * L)
 		s_src.st_ino == s_dst.st_ino) {
 		lua_pushnil(L);
 		lua_pushinteger(L, EINVAL);
-		return 1;
-	}
-
-	error = 0;
-	csize = 0;
-	flen = (uint64_t) s_src.st_size;
-	d_src = (unsigned char *) malloc(CMP_BUFSIZ);
-	if (d_src == NULL) {
-		lua_pushnil(L);
-		lua_pushinteger(L, ENOMEM);
 		return 2;
 	}
 
+	flen = (uint64_t) s_src.st_size;
 	f_src = open(src, O_RDONLY | O_CLOEXEC);
 	if (f_src < 0) {
 		ret = errno;
@@ -1332,39 +1322,33 @@ static int sysutil_copyfile(lua_State * L)
 		ret = errno;
 		close(f_src);
 err0:
-		free(d_src);
 		lua_pushnil(L);
 		lua_pushinteger(L, ret);
 		return 2;
 	}
 
+	csize = 0;
+	error = 0;
 	while (csize < flen) {
-		ssize_t r0, r1;
-		uint64_t left;
+		ssize_t ret;
+		uint64_t chunk;
 
-		left = flen - csize;
-		if (left > CMP_BUFSIZ)
-			left = CMP_BUFSIZ;
+		chunk = flen - csize;
+		if (chunk > CMP_BUFSIZ)
+			chunk = CMP_BUFSIZ;
 
-		r0 = read(f_src, d_src, (size_t) left);
-		if (r0 == 0)
-			break;
-		if (r0 < 0)
-			goto err1;
-
-		errno = 0;
-		r1 = write(f_dst, d_src, (size_t) r0);
-		if (r1 != r0) {
-err1:
+		ret = sendfile(f_dst, f_src, NULL, (size_t) chunk);
+		if (ret < 0) {
 			error = errno;
-			if (error <= 0)
-				error = EIO;
 			break;
 		}
-		csize += (uint64_t) r0;
+		if (ret == 0) { /* early EOF ? */
+			error = ESPIPE;
+			break;
+		}
+		csize += (uint64_t) ret;
 	}
 
-	free(d_src);
 	close(f_src);
 	if (error != 0) {
 		close(f_dst);
