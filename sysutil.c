@@ -1334,18 +1334,16 @@ err0:
 		uint64_t chunk;
 
 		chunk = flen - csize;
-		if (chunk > CMP_BUFSIZ)
-			chunk = CMP_BUFSIZ;
+		if (chunk > 1048576)
+			chunk = 1048576;
 
 		ret = sendfile(f_dst, f_src, NULL, (size_t) chunk);
 		if (ret < 0) {
 			error = errno;
 			break;
 		}
-		if (ret == 0) { /* early EOF ? */
-			error = ESPIPE;
+		if (ret == 0) /* early EOF ? */
 			break;
-		}
 		csize += (uint64_t) ret;
 	}
 
