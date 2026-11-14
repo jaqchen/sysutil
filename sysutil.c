@@ -3725,6 +3725,57 @@ static int sysutil_rmdir(lua_State * L)
 	return 2;
 }
 
+static int sysutil_sendfile(lua_State * L)
+{
+	off_t offs;
+	ssize_t ret;
+	lua_Integer count;
+	int fdout, fdin, null_offs, ntop;
+
+	fdout = fdin = -1;
+	count = (lua_Integer) -1l;
+	ntop = lua_gettop(L);
+
+	if (sysutil_isinteger(L, ntop, 1, &count))
+		fdout = (int) count;
+	if (sysutil_isinteger(L, ntop, 2, &count))
+		fdin = (int) count;
+	if (fdout < 0 || fdin < 0 || fdout == fdin) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EBADF);
+		return 2;
+	}
+
+	offs = 0;
+	null_offs = 1;
+	if (sysutil_isinteger(L, ntop, 3, &count)) {
+		null_offs = 0;
+		offs = (off_t) count;
+	}
+
+	count = (lua_Integer) -1l;
+	sysutil_isinteger(L, ntop, 4, &count);
+	if (count <= 0) {
+		lua_pushnil(L);
+		lua_pushinteger(L, EINVAL);
+		return 2;
+	}
+
+	ret = sendfile(fdout, fdin, null_offs ? NULL : &offs, (size_t) count);
+	if (ret < 0) {
+		int error = errno;
+		lua_pushnil(L);
+		lua_pushinteger(L, error);
+		return 2;
+	}
+
+	sysutil_push_uint(L, (uint64_t) ret);
+	if (null_offs != 0)
+		return 1;
+	sysutil_push_int(L, (int64_t) offs);
+	return 2;
+}
+
 static int sysutil_sendto(lua_State * L)
 {
 	ssize_t rval;
@@ -5383,6 +5434,7 @@ static const luaL_Reg sysutil_regs[] = {
 	{ "recvfrom",       sysutil_recvfrom },
 	{ "rename",         sysutil_rename },
 	{ "rmdir",          sysutil_rmdir },
+	{ "sendfile",       sysutil_sendfile },
 	{ "sendto",         sysutil_sendto },
 	{ "setenv",         sysutil_setenv },
 	{ "setname",        sysutil_setname },
