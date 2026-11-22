@@ -10,3 +10,6 @@
 *.rock
 /lua_modules/
 *.src.rock
+
+/.ft-compiled
+/.ft-prepared
